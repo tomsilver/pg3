@@ -13,6 +13,7 @@ setup(name="pg3",
       install_requires=[
           "numpy",
           "pathos",
+          "pyperplan",
       ],
       setup_requires=['setuptools_scm'],
       include_package_data=True,

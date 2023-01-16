@@ -306,6 +306,14 @@ class _GroundSTRIPSOperator:
         return str(self) > str(other)
 
 
+@dataclass(frozen=True)
+class Task:
+    """A planning task."""
+    objects: Set[Object]
+    init: Set[GroundAtom]
+    goal: Set[GroundAtom]
+
+
 @dataclass(frozen=True, repr=False, eq=False)
 class LDLRule:
     """A lifted decision list rule."""
