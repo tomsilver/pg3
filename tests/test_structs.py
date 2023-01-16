@@ -4,7 +4,7 @@ import pytest
 
 from pg3 import utils
 from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Object, Predicate, STRIPSOperator, Type, Variable, _Atom, _GroundLDLRule, \
+    Object, Predicate, STRIPSOperator, Type, Variable, _Atom, \
     _GroundSTRIPSOperator
 
 
@@ -73,7 +73,6 @@ def test_predicate_and_atom():
     assert pred != pred2
     assert pred < pred2
     cup1 = Object("cup1", cup_type)
-    cup2 = Object("cup2", cup_type)
     plate = Object("plate", plate_type)
     cup_var = Variable("?cup", cup_type)
     plate_var = Variable("?plate", plate_type)
@@ -325,6 +324,18 @@ LDLRule-MyPickRule:
 
     expected_op = pick_op.ground((cup1, ))
     assert utils.query_ldl(ldl, atoms, objects, goal) == expected_op
+
+    # Test for missing positive static preconditions.
+    static_predicates = {hand_empty}  # pretend static for this test
+    init_atoms = set()
+    assert utils.query_ldl(ldl, atoms, objects, goal, static_predicates,
+                           init_atoms) is None
+
+    # Test for present negative static preconditions.
+    static_predicates = {holding}  # pretend static for this test
+    init_atoms = {GroundAtom(holding, [cup1])}
+    assert utils.query_ldl(ldl, atoms, objects, goal, static_predicates,
+                           init_atoms) is None
 
     atoms = {GroundAtom(holding, [cup1])}
 

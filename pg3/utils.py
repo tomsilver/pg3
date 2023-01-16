@@ -2,10 +2,10 @@
 
 import functools
 import itertools
-from typing import Collection, FrozenSet, List, Optional, Set
+from typing import Collection, Dict, FrozenSet, List, Optional, Set
 
 from pg3.structs import GroundAtom, LDLRule, LiftedDecisionList, Object, \
-    Predicate, _GroundLDLRule, _GroundSTRIPSOperator
+    Predicate, Variable, _GroundLDLRule, _GroundSTRIPSOperator
 
 
 def all_ground_ldl_rules(

@@ -137,14 +137,6 @@ class _Atom:
     def __repr__(self) -> str:
         return str(self)
 
-    def pddl_str(self) -> str:
-        """Get a string representation suitable for writing out to a PDDL
-        file."""
-        if not self.entities:
-            return f"({self.predicate.name})"
-        entities_str = " ".join(e.name for e in self.entities)
-        return f"({self.predicate.name} {entities_str})"
-
     def __hash__(self) -> int:
         return self._hash
 
