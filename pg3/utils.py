@@ -1,13 +1,20 @@
 """Utility functions."""
+from __future__ import annotations
 
 import functools
 import itertools
+import logging
+from dataclasses import dataclass
 from typing import Collection, Dict, FrozenSet, Iterator, List, Optional, \
     Sequence, Set
 
+from pyperplan.heuristics.heuristic_base import \
+    Heuristic as _PyperplanBaseHeuristic
+from pyperplan.planner import HEURISTICS as _PYPERPLAN_HEURISTICS
+
 from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Object, ObjectOrVariable, Predicate, Type, Variable, _GroundLDLRule, \
-    _GroundSTRIPSOperator
+    Object, ObjectOrVariable, Predicate, STRIPSOperator, Type, Variable, \
+    _GroundLDLRule, _GroundSTRIPSOperator
 
 
 def all_ground_ldl_rules(
@@ -136,6 +143,12 @@ def _get_entity_combinations(
         yield list(choice)
 
 
+def get_object_combinations(objects: Collection[Object],
+                            types: Sequence[Type]) -> Iterator[List[Object]]:
+    """Get all combinations of objects satisfying the given types sequence."""
+    return _get_entity_combinations(objects, types)
+
+
 def get_variable_combinations(
         variables: Collection[Variable],
         types: Sequence[Type]) -> Iterator[List[Variable]]:
@@ -185,3 +198,232 @@ def create_new_variables(
         new_var = Variable(new_var_name, t)
         new_vars.append(new_var)
     return new_vars
+
+
+def apply_operator(op: _GroundSTRIPSOperator,
+                   atoms: Set[GroundAtom]) -> Set[GroundAtom]:
+    """Get a next set of atoms given a current set and a ground operator."""
+    new_atoms = set(atoms)
+    for atom in op.delete_effects:
+        new_atoms.discard(atom)
+    for atom in op.add_effects:
+        new_atoms.add(atom)
+    return new_atoms
+
+
+def get_applicable_operators(
+        ground_ops: Collection[_GroundSTRIPSOperator],
+        atoms: Collection[GroundAtom]) -> Iterator[_GroundSTRIPSOperator]:
+    """Iterate over ground operators whose preconditions are satisfied.
+
+    Note: the order may be nondeterministic. Users should be invariant.
+    """
+    for op in ground_ops:
+        applicable = op.preconditions.issubset(atoms)
+        if applicable:
+            yield op
+
+
+def all_ground_operators(
+        operator: STRIPSOperator,
+        objects: Collection[Object]) -> Iterator[_GroundSTRIPSOperator]:
+    """Get all possible groundings of the given operator with the given
+    objects."""
+    types = [p.type for p in operator.parameters]
+    for choice in get_object_combinations(objects, types):
+        yield operator.ground(tuple(choice))
+
+
+def get_static_atoms(ground_ops: Collection[_GroundSTRIPSOperator],
+                     atoms: Collection[GroundAtom]) -> Set[GroundAtom]:
+    """Get the subset of atoms from the given set that are static with respect
+    to the given ground operators.
+
+    Note that this can include MORE than simply the set of atoms whose
+    predicates are static, because now we have ground operators.
+    """
+    static_atoms = set()
+    for atom in atoms:
+        # This atom is not static if it appears in any op's effects.
+        if any(
+                any(atom == eff for eff in op.add_effects) or any(
+                    atom == eff for eff in op.delete_effects)
+                for op in ground_ops):
+            continue
+        static_atoms.add(atom)
+    return static_atoms
+
+
+def get_all_ground_atoms_for_predicate(
+        predicate: Predicate, objects: FrozenSet[Object]) -> Set[GroundAtom]:
+    """Get all groundings of the predicate given objects.
+
+    Note: we don't want lru_cache() on this function because we might want
+    to call it with stripped predicates, and we wouldn't want it to return
+    cached values.
+    """
+    ground_atoms = set()
+    for args in get_object_combinations(objects, predicate.types):
+        ground_atom = GroundAtom(predicate, args)
+        ground_atoms.add(ground_atom)
+    return ground_atoms
+
+
+def create_task_planning_heuristic(
+    heuristic_name: str,
+    init_atoms: Set[GroundAtom],
+    goal: Set[GroundAtom],
+    ground_ops: Collection[_GroundSTRIPSOperator],
+    predicates: Collection[Predicate],
+    objects: Collection[Object],
+) -> _TaskPlanningHeuristic:
+    """Create a task planning heuristic that consumes ground atoms and
+    estimates the cost-to-go."""
+    if heuristic_name in _PYPERPLAN_HEURISTICS:
+        return _create_pyperplan_heuristic(heuristic_name, init_atoms, goal,
+                                           ground_ops, predicates, objects)
+    raise ValueError(f"Unrecognized heuristic name: {heuristic_name}.")
+
+
+@dataclass(frozen=True)
+class _TaskPlanningHeuristic:
+    """A task planning heuristic."""
+    name: str
+    init_atoms: Collection[GroundAtom]
+    goal: Set[GroundAtom]
+    ground_ops: Collection[_GroundSTRIPSOperator]
+
+    def __call__(self, atoms: Collection[GroundAtom]) -> float:
+        raise NotImplementedError("Override me!")
+
+
+############################### Pyperplan Glue ###############################
+
+
+def _create_pyperplan_heuristic(
+    heuristic_name: str,
+    init_atoms: Set[GroundAtom],
+    goal: Set[GroundAtom],
+    ground_ops: Collection[_GroundSTRIPSOperator],
+    predicates: Collection[Predicate],
+    objects: Collection[Object],
+) -> _PyperplanHeuristicWrapper:
+    """Create a pyperplan heuristic that inherits from
+    _TaskPlanningHeuristic."""
+    assert heuristic_name in _PYPERPLAN_HEURISTICS
+    static_atoms = get_static_atoms(ground_ops, init_atoms)
+    pyperplan_heuristic_cls = _PYPERPLAN_HEURISTICS[heuristic_name]
+    pyperplan_task = _create_pyperplan_task(init_atoms, goal, ground_ops,
+                                            predicates, objects, static_atoms)
+    pyperplan_heuristic = pyperplan_heuristic_cls(pyperplan_task)
+    pyperplan_goal = _atoms_to_pyperplan_facts(goal - static_atoms)
+    return _PyperplanHeuristicWrapper(heuristic_name, init_atoms, goal,
+                                      ground_ops, static_atoms,
+                                      pyperplan_heuristic, pyperplan_goal)
+
+
+_PyperplanFacts = FrozenSet[str]
+
+
+@dataclass(frozen=True)
+class _PyperplanNode:
+    """Container glue for pyperplan heuristics."""
+    state: _PyperplanFacts
+    goal: _PyperplanFacts
+
+
+@dataclass(frozen=True)
+class _PyperplanOperator:
+    """Container glue for pyperplan heuristics."""
+    name: str
+    preconditions: _PyperplanFacts
+    add_effects: _PyperplanFacts
+    del_effects: _PyperplanFacts
+
+
+@dataclass(frozen=True)
+class _PyperplanTask:
+    """Container glue for pyperplan heuristics."""
+    facts: _PyperplanFacts
+    initial_state: _PyperplanFacts
+    goals: _PyperplanFacts
+    operators: Collection[_PyperplanOperator]
+
+
+@dataclass(frozen=True)
+class _PyperplanHeuristicWrapper(_TaskPlanningHeuristic):
+    """A light wrapper around pyperplan's heuristics."""
+    _static_atoms: Set[GroundAtom]
+    _pyperplan_heuristic: _PyperplanBaseHeuristic
+    _pyperplan_goal: _PyperplanFacts
+
+    def __call__(self, atoms: Collection[GroundAtom]) -> float:
+        # Note: filtering out static atoms.
+        pyperplan_facts = _atoms_to_pyperplan_facts(set(atoms) \
+                                                    - self._static_atoms)
+        return self._evaluate(pyperplan_facts, self._pyperplan_goal,
+                              self._pyperplan_heuristic)
+
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _evaluate(pyperplan_facts: _PyperplanFacts,
+                  pyperplan_goal: _PyperplanFacts,
+                  pyperplan_heuristic: _PyperplanBaseHeuristic) -> float:
+        pyperplan_node = _PyperplanNode(pyperplan_facts, pyperplan_goal)
+        logging.disable(logging.DEBUG)
+        result = pyperplan_heuristic(pyperplan_node)
+        logging.disable(logging.NOTSET)
+        return result
+
+
+def _create_pyperplan_task(
+    init_atoms: Set[GroundAtom],
+    goal: Set[GroundAtom],
+    ground_ops: Collection[_GroundSTRIPSOperator],
+    predicates: Collection[Predicate],
+    objects: Collection[Object],
+    static_atoms: Set[GroundAtom],
+) -> _PyperplanTask:
+    """Helper glue for pyperplan heuristics."""
+    all_atoms = set()
+    for predicate in predicates:
+        all_atoms.update(
+            get_all_ground_atoms_for_predicate(predicate, frozenset(objects)))
+    # Note: removing static atoms.
+    pyperplan_facts = _atoms_to_pyperplan_facts(all_atoms - static_atoms)
+    pyperplan_state = _atoms_to_pyperplan_facts(init_atoms - static_atoms)
+    pyperplan_goal = _atoms_to_pyperplan_facts(goal - static_atoms)
+    pyperplan_operators = set()
+    for op in ground_ops:
+        # Note: the pyperplan operator must include the objects, because hFF
+        # uses the operator name in constructing the relaxed plan, and the
+        # relaxed plan is a set. If we instead just used op.name, there would
+        # be a very nasty bug where two ground operators in the relaxed plan
+        # that have different objects are counted as just one.
+        name = op.name + "-".join(o.name for o in op.objects)
+        pyperplan_operator = _PyperplanOperator(
+            name,
+            # Note: removing static atoms from preconditions.
+            _atoms_to_pyperplan_facts(op.preconditions - static_atoms),
+            _atoms_to_pyperplan_facts(op.add_effects),
+            _atoms_to_pyperplan_facts(op.delete_effects))
+        pyperplan_operators.add(pyperplan_operator)
+    return _PyperplanTask(pyperplan_facts, pyperplan_state, pyperplan_goal,
+                          pyperplan_operators)
+
+
+@functools.lru_cache(maxsize=None)
+def _atom_to_pyperplan_fact(atom: GroundAtom) -> str:
+    """Convert atom to tuple for interface with pyperplan."""
+    arg_str = " ".join(o.name for o in atom.objects)
+    return f"({atom.predicate.name} {arg_str})"
+
+
+def _atoms_to_pyperplan_facts(
+        atoms: Collection[GroundAtom]) -> _PyperplanFacts:
+    """Light wrapper around _atom_to_pyperplan_fact() that operates on a
+    collection of atoms."""
+    return frozenset({_atom_to_pyperplan_fact(atom) for atom in atoms})
+
+
+############################## End Pyperplan Glue ##############################
