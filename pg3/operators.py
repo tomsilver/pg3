@@ -126,7 +126,6 @@ class _DeleteConditionPG3SearchOperator(_PG3SearchOperator):
         for rule_idx, rule in enumerate(ldl.rules):
             for condition in sorted(rule.pos_state_preconditions | \
                 rule.neg_state_preconditions | rule.goal_preconditions):
-                print(condition)
 
                 # If the condition to be removed is a
                 # precondition of an operator, don't remove it.

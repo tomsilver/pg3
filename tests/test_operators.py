@@ -109,7 +109,7 @@ LDLRule-pick-up:
 
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 6
-    ldl2_1 = min(succ2, key=lambda l: l.rules[0].name)
+    ldl2_1 = min(succ2, key=lambda l: str(l))
     assert str(ldl2_1) == """LiftedDecisionList[
 LDLRule-MyPickUp:
     Parameters: [?paper:paper, ?loc:loc]
@@ -133,7 +133,7 @@ LDLRule-deliver:
 
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 36
-    ldl2_1 = min(succ2, key=lambda l: l.rules[0].name)
+    ldl2_1 = min(succ2, key=lambda l: str(l))
     assert str(ldl2_1) == """LiftedDecisionList[
 LDLRule-MyPickUp:
     Parameters: [?loc:loc, ?paper:paper, ?x0:loc]
