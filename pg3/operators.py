@@ -108,10 +108,10 @@ class _AddConditionPG3SearchOperator(_PG3SearchOperator):
             self, variables: FrozenSet[Variable]) -> List[LiftedAtom]:
         conditions = []
         for pred in sorted(self._predicates):
-            condition_vars = variables
-            # Uncomment to allow creation of fresh variables.
-            # new_vars = utils.create_new_variables(pred.types, variables)
-            # condition_vars = variables | frozenset(new_vars)
+            new_vars = utils.create_new_variables(pred.types, variables)
+            condition_vars = variables | frozenset(new_vars)
+            # Uncomment to disallow creation of fresh variables.
+            # condition_vars = variables
             for condition in utils.get_all_lifted_atoms_for_predicate(
                     pred, condition_vars):
                 conditions.append(condition)
