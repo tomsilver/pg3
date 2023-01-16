@@ -124,8 +124,8 @@ class _DeleteConditionPG3SearchOperator(_PG3SearchOperator):
     def get_successors(
             self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
         for rule_idx, rule in enumerate(ldl.rules):
-            for condition in rule.pos_state_preconditions | \
-                rule.neg_state_preconditions | rule.goal_preconditions:
+            for condition in sorted(rule.pos_state_preconditions | \
+                rule.neg_state_preconditions | rule.goal_preconditions):
 
                 # If the condition to be removed is a
                 # precondition of an operator, don't remove it.
