@@ -79,7 +79,7 @@ def test_pg3_search_operators():
 
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 3
-    ldl1_1, ldl1_2, ldl1_3 = sorted(succ1, key=lambda l: l.rules[0].name)
+    ldl1_1, ldl1_2, ldl1_3 = sorted(succ1, key=str)
     assert str(ldl1_1) == """LiftedDecisionList[
 LDLRule-deliver:
     Parameters: [?paper:paper, ?loc:loc]
@@ -109,7 +109,7 @@ LDLRule-pick-up:
 
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 6
-    ldl2_1 = min(succ2, key=lambda l: str(l))
+    ldl2_1 = min(succ2, key=str)
     assert str(ldl2_1) == """LiftedDecisionList[
 LDLRule-MyPickUp:
     Parameters: [?paper:paper, ?loc:loc]
@@ -133,7 +133,7 @@ LDLRule-deliver:
 
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 36
-    ldl2_1 = min(succ2, key=lambda l: str(l))
+    ldl2_1 = min(succ2, key=str)
     assert str(ldl2_1) == """LiftedDecisionList[
 LDLRule-MyPickUp:
     Parameters: [?loc:loc, ?paper:paper, ?x0:loc]
@@ -176,7 +176,7 @@ LDLRule-MyPickUp:
 
     dummy_type = Type("dummytype", ["a", "b"])
     dummy_var = Variable("?dv", dummy_type)
-    other_dummy_var = list(pick_up_operator.preconditions)[0].variables[0]
+    other_dummy_var = sorted(pick_up_operator.preconditions)[0].variables[0]
 
     dummy_3 = Predicate("OneMoreDummy", \
         [dummy_type, other_dummy_var.type])
