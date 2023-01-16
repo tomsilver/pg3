@@ -18,7 +18,7 @@ def run_policy_search(predicates: Set[Predicate],
                       train_tasks: Sequence[Task],
                       horizon: int,
                       heuristic_name: str = "policy_guided",
-                      pg3_search_method: str = "hill_climbing",
+                      search_method: str = "hill_climbing",
                       task_planning_heuristic: str = "lmcut",
                       max_policy_guided_rollout: int = 50,
                       gbfs_max_expansions: int = 100,
@@ -48,7 +48,7 @@ def run_policy_search(predicates: Set[Predicate],
             for i, child in enumerate(op.get_successors(ldl)):
                 yield (op, i), child, 1.0  # cost always 1
 
-    if pg3_search_method == "gbfs":
+    if search_method == "gbfs":
         # Terminate only after max expansions.
         path, _ = run_gbfs(initial_state=initial_state,
                            check_goal=lambda _: False,
@@ -57,7 +57,7 @@ def run_policy_search(predicates: Set[Predicate],
                            max_expansions=gbfs_max_expansions,
                            lazy_expansion=True)
 
-    elif pg3_search_method == "hill_climbing":
+    elif search_method == "hill_climbing":
         # Terminate when no improvement is found.
         path, _, _ = run_hill_climbing(initial_state=initial_state,
                                        check_goal=lambda _: False,
@@ -67,8 +67,8 @@ def run_policy_search(predicates: Set[Predicate],
                                        enforced_depth=hc_enforced_depth)
 
     else:
-        raise NotImplementedError("Unrecognized pg3_search_method "
-                                  f"{pg3_search_method}.")
+        raise NotImplementedError("Unrecognized search_method "
+                                  f"{search_method}.")
 
     # Return the best seen policy.
     best_ldl = path[-1]
