@@ -1,7 +1,10 @@
 """Tests for utils.py."""
 
+import pytest
+
 from pg3 import utils
 from pg3.structs import Type, Variable
+from pg3.utils import _PyperplanHeuristicWrapper, _TaskPlanningHeuristic
 
 
 def test_create_new_variables():
@@ -25,3 +28,33 @@ def test_create_new_variables():
                                     existing_vars=existing_vars,
                                     var_prefix="?llama")
     assert vs == [Variable("?llama0", plate_type)]
+
+
+@pytest.mark.parametrize("heuristic_name, expected_heuristic_cls", [
+    ("hadd", _PyperplanHeuristicWrapper),
+    ("hmax", _PyperplanHeuristicWrapper),
+    ("hff", _PyperplanHeuristicWrapper),
+    ("hsa", _PyperplanHeuristicWrapper),
+    ("lmcut", _PyperplanHeuristicWrapper),
+])
+def test_create_task_planning_heuristic(heuristic_name,
+                                        expected_heuristic_cls):
+    """Tests for create_task_planning_heuristic()."""
+    heuristic = utils.create_task_planning_heuristic(heuristic_name, set(),
+                                                     set(), set(), set(),
+                                                     set())
+    assert isinstance(heuristic, expected_heuristic_cls)
+
+
+def test_create_task_planning_heuristic_raises_error_for_unknown_heuristic():
+    """Test creating unknown heuristic raises a ValueError."""
+    with pytest.raises(ValueError):
+        utils.create_task_planning_heuristic("not a real heuristic", set(),
+                                             set(), set(), set(), set())
+
+
+def test_create_task_planning_heuristic_base_class():
+    """Test to cover _TaskPlanningHeuristic base class."""
+    base_heuristic = _TaskPlanningHeuristic("base", set(), set(), set())
+    with pytest.raises(NotImplementedError):
+        base_heuristic(set())
