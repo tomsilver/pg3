@@ -11,6 +11,7 @@ setup(name="pg3",
       version="0.0.0",
       packages=find_packages(include=["pg3", "pg3.*"]),
       install_requires=[
+          "numpy",
           "pathos",
       ],
       setup_requires=['setuptools_scm'],
