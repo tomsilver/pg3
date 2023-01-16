@@ -5,6 +5,7 @@ from typing import Type as TypingType
 
 from typing_extensions import TypeAlias
 
+from pg3 import utils
 from pg3.heuristics import _DemoPlanComparisonPG3Heuristic, _PG3Heuristic, \
     _PolicyEvaluationPG3Heuristic, _PolicyGuidedPG3Heuristic
 from pg3.operators import _AddConditionPG3SearchOperator, \
@@ -13,16 +14,40 @@ from pg3.search import run_gbfs, run_hill_climbing
 from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task
 
 
-def run_policy_search(predicates: Set[Predicate],
-                      operators: Set[STRIPSOperator],
-                      train_tasks: Sequence[Task],
-                      horizon: int,
-                      heuristic_name: str = "policy_guided",
-                      search_method: str = "hill_climbing",
-                      task_planning_heuristic: str = "lmcut",
-                      max_policy_guided_rollout: int = 50,
-                      gbfs_max_expansions: int = 100,
-                      hc_enforced_depth: int = 0) -> LiftedDecisionList:
+def learn_policy(domain_str: str,
+                 problem_strs: List[str],
+                 horizon: int,
+                 heuristic_name: str = "policy_guided",
+                 search_method: str = "hill_climbing",
+                 task_planning_heuristic: str = "lmcut",
+                 max_policy_guided_rollout: int = 50,
+                 gbfs_max_expansions: int = 100,
+                 hc_enforced_depth: int = 0) -> str:
+    """Outputs a string representation of a lifted decision list."""
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    train_tasks = [
+        utils.pddl_problem_str_to_task(problem_str, domain_str, types,
+                                       predicates)
+        for problem_str in problem_strs
+    ]
+    ldl = _run_policy_search(predicates, operators, train_tasks, horizon,
+                             heuristic_name, search_method,
+                             task_planning_heuristic,
+                             max_policy_guided_rollout, gbfs_max_expansions,
+                             hc_enforced_depth)
+    return str(ldl)
+
+
+def _run_policy_search(predicates: Set[Predicate],
+                       operators: Set[STRIPSOperator],
+                       train_tasks: Sequence[Task],
+                       horizon: int,
+                       heuristic_name: str = "policy_guided",
+                       search_method: str = "hill_climbing",
+                       task_planning_heuristic: str = "lmcut",
+                       max_policy_guided_rollout: int = 50,
+                       gbfs_max_expansions: int = 100,
+                       hc_enforced_depth: int = 0) -> LiftedDecisionList:
     """Search for a lifted decision list policy that solves the training
     tasks."""
     # Set up a search over LDL space.

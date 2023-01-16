@@ -5,16 +5,21 @@ import functools
 import itertools
 import logging
 from dataclasses import dataclass
+from graphlib import TopologicalSorter
 from typing import Collection, Dict, FrozenSet, Iterator, List, Optional, \
-    Sequence, Set
+    Sequence, Set, Tuple
 
 from pyperplan.heuristics.heuristic_base import \
     Heuristic as _PyperplanBaseHeuristic
+from pyperplan.pddl.parser import TraversePDDLDomain, TraversePDDLProblem, \
+    parse_domain_def, parse_lisp_iterator, parse_problem_def
+from pyperplan.pddl.pddl import Domain as PyperplanDomain
+from pyperplan.pddl.pddl import Type as PyperplanType
 from pyperplan.planner import HEURISTICS as _PYPERPLAN_HEURISTICS
 
 from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Object, ObjectOrVariable, Predicate, STRIPSOperator, Type, Variable, \
-    _GroundLDLRule, _GroundSTRIPSOperator
+    Object, ObjectOrVariable, Predicate, STRIPSOperator, Task, Type, \
+    Variable, _GroundLDLRule, _GroundSTRIPSOperator
 
 
 def all_ground_ldl_rules(
@@ -427,3 +432,123 @@ def _atoms_to_pyperplan_facts(
 
 
 ############################## End Pyperplan Glue ##############################
+
+
+def _domain_str_to_pyperplan_domain(domain_str: str) -> PyperplanDomain:
+    domain_ast = parse_domain_def(parse_lisp_iterator(domain_str.split("\n")))
+    visitor = TraversePDDLDomain()
+    domain_ast.accept(visitor)
+    return visitor.domain
+
+
+def parse_pddl_domain(
+    pddl_domain_str: str
+) -> Tuple[Set[Type], Set[Predicate], Set[STRIPSOperator]]:
+    """Parse a PDDL domain from a string."""
+    # Let pyperplan do most of the heavy lifting.
+    pyperplan_domain = _domain_str_to_pyperplan_domain(pddl_domain_str)
+    pyperplan_types = pyperplan_domain.types
+    pyperplan_predicates = pyperplan_domain.predicates
+    pyperplan_operators = pyperplan_domain.actions
+    # Convert the pyperplan domain into our structs.
+    # Process the type hierarchy. Sort the types such that if X inherits from Y
+    # then X is after Y in the list (topological sort).
+    type_graph = {
+        t: {t.parent}
+        for t in pyperplan_types.values() if t.parent is not None
+    }
+    sorted_types = list(TopologicalSorter(type_graph).static_order())
+    pyperplan_type_to_type: Dict[PyperplanType, Type] = {}
+    for pyper_type in sorted_types:
+        if pyper_type.parent is None:
+            assert pyper_type.name == "object"
+            parent = None
+        else:
+            parent = pyperplan_type_to_type[pyper_type.parent]
+        new_type = Type(pyper_type.name, parent)
+        pyperplan_type_to_type[pyper_type] = new_type
+    # Handle case where the domain is untyped.
+    # Pyperplan uses the object type by default.
+    if not pyperplan_type_to_type:  # pragma: no cover
+        pyper_type = next(iter(pyperplan_types.values()))
+        new_type = Type(pyper_type.name, parent=None)
+        pyperplan_type_to_type[pyper_type] = new_type
+    # Convert the predicates.
+    predicate_name_to_predicate = {}
+    for pyper_pred in pyperplan_predicates.values():
+        name = pyper_pred.name
+        pred_types = [
+            pyperplan_type_to_type[t] for _, (t, ) in pyper_pred.signature
+        ]
+        pred = Predicate(name, pred_types)
+        predicate_name_to_predicate[name] = pred
+    # Convert the operators.
+    operators = set()
+    for pyper_op in pyperplan_operators.values():
+        name = pyper_op.name
+        parameters = [
+            Variable(n, pyperplan_type_to_type[t])
+            for n, (t, ) in pyper_op.signature
+        ]
+        param_name_to_param = {p.name: p for p in parameters}
+        preconditions = {
+            LiftedAtom(predicate_name_to_predicate[a.name],
+                       [param_name_to_param[n] for n, _ in a.signature])
+            for a in pyper_op.precondition
+        }
+        add_effects = {
+            LiftedAtom(predicate_name_to_predicate[a.name],
+                       [param_name_to_param[n] for n, _ in a.signature])
+            for a in pyper_op.effect.addlist
+        }
+        delete_effects = {
+            LiftedAtom(predicate_name_to_predicate[a.name],
+                       [param_name_to_param[n] for n, _ in a.signature])
+            for a in pyper_op.effect.dellist
+        }
+        strips_op = STRIPSOperator(name, parameters, preconditions,
+                                   add_effects, delete_effects)
+        operators.add(strips_op)
+    # Collect the final outputs.
+    types = set(pyperplan_type_to_type.values())
+    predicates = set(predicate_name_to_predicate.values())
+    return types, predicates, operators
+
+
+def pddl_problem_str_to_task(pddl_problem_str: str, pddl_domain_str: str,
+                             types: Set[Type],
+                             predicates: Set[Predicate]) -> Task:
+    """Parse a PDDL problem from a string."""
+    # Let pyperplan do most of the heavy lifting.
+    # Pyperplan needs the domain to parse the problem. Note that this is
+    # cached by lru_cache.
+    pyperplan_domain = _domain_str_to_pyperplan_domain(pddl_domain_str)
+    # Now that we have the domain, parse the problem.
+    lisp_iterator = parse_lisp_iterator(pddl_problem_str.split("\n"))
+    problem_ast = parse_problem_def(lisp_iterator)
+    visitor = TraversePDDLProblem(pyperplan_domain)
+    problem_ast.accept(visitor)
+    pyperplan_problem = visitor.get_problem()
+    # Create the objects.
+    type_name_to_type = {t.name: t for t in types}
+    object_name_to_obj = {
+        o: Object(o, type_name_to_type[t.name])
+        for o, t in pyperplan_problem.objects.items()
+    }
+    objects = set(object_name_to_obj.values())
+    # Create the initial state.
+    predicate_name_to_predicate = {p.name: p for p in predicates}
+    init = {
+        GroundAtom(predicate_name_to_predicate[a.name],
+                   [object_name_to_obj[n] for n, _ in a.signature])
+        for a in pyperplan_problem.initial_state
+    }
+    # Create the goal.
+    goal = {
+        GroundAtom(predicate_name_to_predicate[a.name],
+                   [object_name_to_obj[n] for n, _ in a.signature])
+        for a in pyperplan_problem.goal
+    }
+    # Finalize the task.
+    task = Task(objects, init, goal)
+    return task
