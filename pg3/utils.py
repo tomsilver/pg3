@@ -2,10 +2,12 @@
 
 import functools
 import itertools
-from typing import Collection, Dict, FrozenSet, List, Optional, Set
+from typing import Collection, Dict, FrozenSet, Iterator, List, Optional, \
+    Sequence, Set
 
-from pg3.structs import GroundAtom, LDLRule, LiftedDecisionList, Object, \
-    Predicate, Variable, _GroundLDLRule, _GroundSTRIPSOperator
+from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
+    Object, ObjectOrVariable, Predicate, Type, Variable, _GroundLDLRule, \
+    _GroundSTRIPSOperator
 
 
 def all_ground_ldl_rules(
@@ -116,3 +118,70 @@ def query_ldl(
                ground_rule.goal_preconditions.issubset(goal):
                 return ground_rule.ground_operator
     return None
+
+
+def _get_entity_combinations(
+        entities: Collection[ObjectOrVariable],
+        types: Sequence[Type]) -> Iterator[List[ObjectOrVariable]]:
+    """Get all combinations of entities satisfying the given types sequence."""
+    sorted_entities = sorted(entities)
+    choices = []
+    for vt in types:
+        this_choices = []
+        for ent in sorted_entities:
+            if ent.is_instance(vt):
+                this_choices.append(ent)
+        choices.append(this_choices)
+    for choice in itertools.product(*choices):
+        yield list(choice)
+
+
+def get_variable_combinations(
+        variables: Collection[Variable],
+        types: Sequence[Type]) -> Iterator[List[Variable]]:
+    """Get all combinations of objects satisfying the given types sequence."""
+    return _get_entity_combinations(variables, types)
+
+
+def get_all_lifted_atoms_for_predicate(
+        predicate: Predicate,
+        variables: FrozenSet[Variable]) -> Set[LiftedAtom]:
+    """Get all groundings of the predicate given variables.
+
+    Note: we don't want lru_cache() on this function because we might want
+    to call it with stripped predicates, and we wouldn't want it to return
+    cached values.
+    """
+    lifted_atoms = set()
+    for args in get_variable_combinations(variables, predicate.types):
+        lifted_atom = LiftedAtom(predicate, args)
+        lifted_atoms.add(lifted_atom)
+    return lifted_atoms
+
+
+def create_new_variables(
+    types: Sequence[Type],
+    existing_vars: Optional[Collection[Variable]] = None,
+    var_prefix: str = "?x",
+) -> List[Variable]:
+    """Create new variables of the given types, avoiding name collisions with
+    existing variables. By convention, all new variables are of the form.
+
+    <var_prefix><number>.
+    """
+    pre_len = len(var_prefix)
+    existing_var_nums = set()
+    if existing_vars:
+        for v in existing_vars:
+            if v.name.startswith(var_prefix) and v.name[pre_len:].isdigit():
+                existing_var_nums.add(int(v.name[pre_len:]))
+    if existing_var_nums:
+        counter = itertools.count(max(existing_var_nums) + 1)
+    else:
+        counter = itertools.count(0)
+    new_vars = []
+    for t in types:
+        new_var_name = f"{var_prefix}{next(counter)}"
+        new_var = Variable(new_var_name, t)
+        new_vars.append(new_var)
+    return new_vars

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
-from typing import Dict, List, Optional, Sequence, Set, Tuple, cast
+from typing import Dict, List, Optional, Sequence, Set, Tuple, TypeVar, cast
 
 
 @dataclass(frozen=True, order=True)
@@ -464,3 +464,4 @@ class LiftedDecisionList:
 
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
+ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
