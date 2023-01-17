@@ -4,7 +4,8 @@ from __future__ import annotations
 import abc
 import functools
 import logging
-from typing import FrozenSet, Iterator, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, Iterator, List, Optional, Sequence, Set, \
+    Tuple
 
 from typing_extensions import TypeAlias
 
@@ -23,6 +24,7 @@ class _PG3Heuristic(abc.ABC):
         operators: Set[STRIPSOperator],
         train_tasks: Sequence[Task],
         horizon: int,
+        demos: Optional[List[List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
     ) -> None:
@@ -30,6 +32,7 @@ class _PG3Heuristic(abc.ABC):
         self._operators = operators
         self._train_tasks = train_tasks
         self._horizon = horizon
+        self._user_supplied_demos = demos
         self._task_planning_heuristic = task_planning_heuristic
         self._max_policy_guided_rollout = max_policy_guided_rollout
 
@@ -86,10 +89,11 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
         operators: Set[STRIPSOperator],
         train_tasks: Sequence[Task],
         horizon: int,
+        demos: Optional[List[List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
     ) -> None:
-        super().__init__(predicates, operators, train_tasks, horizon,
+        super().__init__(predicates, operators, train_tasks, horizon, demos,
                          task_planning_heuristic, max_policy_guided_rollout)
         # Ground the STRIPSOperators once per task and save them.
         self._train_task_idx_to_ground_operators = {
@@ -105,7 +109,6 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
         atom_plan = self._get_atom_plan_for_task(ldl, task_idx)
         # Note: we need the goal because it's an input to the LDL policy.
         task = self._train_tasks[task_idx]
-        assert task.goal.issubset(atom_plan[-1])
         return self._count_missed_steps(ldl, atom_plan, task.objects,
                                         task.goal)
 
@@ -151,6 +154,10 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
         objects, init, goal = task.objects, task.init, task.goal
         ground_operators = self._train_task_idx_to_ground_operators[task_idx]
 
+        if self._user_supplied_demos is not None:
+            demo = self._user_supplied_demos[task_idx]
+            return self._demo_to_atom_plan(demo, init, ground_operators)
+
         # Set up an A* search.
         _S: TypeAlias = FrozenSet[GroundAtom]
         _A: TypeAlias = _GroundSTRIPSOperator
@@ -180,6 +187,41 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
         assert check_goal(planned_frozen_atoms_seq[-1])
 
         return [set(atoms) for atoms in planned_frozen_atoms_seq]
+
+    @staticmethod
+    def _demo_to_atom_plan(
+        demo: List[str], init: Set[GroundAtom],
+        ground_operators: List[_GroundSTRIPSOperator]
+    ) -> Sequence[Set[GroundAtom]]:
+        # Organize ground operators for fast lookup.
+        ground_op_map: Dict[Tuple[str, Tuple[str, ...]],
+                            _GroundSTRIPSOperator] = {}
+        for op in ground_operators:
+            ground_op_map[(op.name, tuple(o.name for o in op.objects))] = op
+
+        # Parse demo into ground ops.
+        ground_op_demo = []
+        for action_str in demo:
+            action_str = action_str.strip()
+            assert action_str.startswith("(")
+            assert action_str.endswith(")")
+            action_str = action_str[1:-1]
+            op_name, arg_str = action_str.split(" ", 1)
+            arg_names = tuple(arg_str.split(" "))
+            ground_op = ground_op_map[(op_name, arg_names)]
+            ground_op_demo.append(ground_op)
+
+        # Roll the demo forward. If invalid preconditions are encountered,
+        # stop the demo there and return the plan prefix.
+        atoms_seq = [init]
+        atoms = init
+        for op in ground_op_demo:
+            if not op.preconditions.issubset(atoms):
+                break
+            atoms = utils.apply_operator(op, atoms)
+            atoms_seq.append(atoms)
+
+        return atoms_seq
 
 
 class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):

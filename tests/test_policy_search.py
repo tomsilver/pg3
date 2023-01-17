@@ -183,3 +183,39 @@ def test_learn_policy():
                      horizon=50,
                      search_method="not a real search method")
     assert "Unrecognized search_method" in str(e)
+
+    # Test learning a policy from demonstrations. These demonstrations
+    # pick up the newspapers and then stop.
+    demo1 = ["(pick-up paper1 loc2)"]
+
+    demo2 = [
+        "(pick-up paper1 loc1)",
+        "(pick-up paper2 loc1)",
+    ]
+
+    demo3 = [
+        "(pick-up paper1 loc1)",
+        "(pick-up paper2 loc1)",
+        "(pick-up paper3 loc1)",
+        "(pick-up paper4 loc1)",
+        "(pick-up paper5 loc1)",
+        # Cover case where an invalid action is included.
+        "(pick-up paper1 loc1)"
+    ]
+
+    demos = [demo1, demo2, demo3]
+
+    policy_str = learn_policy(domain_str,
+                              problem_strs,
+                              horizon=50,
+                              demos=demos,
+                              heuristic_name="demo_plan_comparison")
+
+    assert policy_str == """(define (policy)
+  (:rule pick-up
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+)"""

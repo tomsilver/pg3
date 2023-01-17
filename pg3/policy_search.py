@@ -1,6 +1,6 @@
 """PG3 policy search."""
 
-from typing import Dict, Iterator, List, Sequence, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 from typing import Type as TypingType
 
 from typing_extensions import TypeAlias
@@ -17,6 +17,7 @@ from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task
 def learn_policy(domain_str: str,
                  problem_strs: List[str],
                  horizon: int,
+                 demos: Optional[List[List[str]]] = None,
                  heuristic_name: str = "policy_guided",
                  search_method: str = "hill_climbing",
                  task_planning_heuristic: str = "lmcut",
@@ -24,6 +25,11 @@ def learn_policy(domain_str: str,
                  gbfs_max_expansions: int = 100,
                  hc_enforced_depth: int = 0) -> str:
     """Outputs a string representation of a lifted decision list."""
+    if demos is not None:
+        assert len(demos) == len(problem_strs), "Supply one demo per problem."
+        assert heuristic_name == "demo_plan_comparison", \
+            ("Only supply demos if using demo_plan_comparison heuristic, and "
+             "even then, the demos are optional.")
     types, predicates, operators = utils.parse_pddl_domain(domain_str)
     train_tasks = [
         utils.pddl_problem_str_to_task(problem_str, domain_str, types,
@@ -31,7 +37,7 @@ def learn_policy(domain_str: str,
         for problem_str in problem_strs
     ]
     ldl = _run_policy_search(predicates, operators, train_tasks, horizon,
-                             heuristic_name, search_method,
+                             demos, heuristic_name, search_method,
                              task_planning_heuristic,
                              max_policy_guided_rollout, gbfs_max_expansions,
                              hc_enforced_depth)
@@ -42,6 +48,7 @@ def _run_policy_search(predicates: Set[Predicate],
                        operators: Set[STRIPSOperator],
                        train_tasks: Sequence[Task],
                        horizon: int,
+                       demos: Optional[List[List[str]]] = None,
                        heuristic_name: str = "policy_guided",
                        search_method: str = "hill_climbing",
                        task_planning_heuristic: str = "lmcut",
@@ -61,7 +68,7 @@ def _run_policy_search(predicates: Set[Predicate],
 
     # The heuristic is what distinguishes PG3 from baseline approaches.
     heuristic = _create_heuristic(heuristic_name, predicates, operators,
-                                  train_tasks, horizon,
+                                  train_tasks, horizon, demos,
                                   task_planning_heuristic,
                                   max_policy_guided_rollout)
 
@@ -113,6 +120,7 @@ def _create_search_operators(
 def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],
                       operators: Set[STRIPSOperator],
                       train_tasks: Sequence[Task], horizon: int,
+                      demos: Optional[List[List[str]]],
                       task_planning_heuristic: str,
                       max_policy_guided_rollout: int) -> _PG3Heuristic:
     heuristic_name_to_cls: Dict[str, TypingType[_PG3Heuristic]] = {
@@ -121,5 +129,5 @@ def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],
         "demo_plan_comparison": _DemoPlanComparisonPG3Heuristic,
     }
     cls = heuristic_name_to_cls[heuristic_name]
-    return cls(predicates, operators, train_tasks, horizon,
+    return cls(predicates, operators, train_tasks, horizon, demos,
                task_planning_heuristic, max_policy_guided_rollout)
