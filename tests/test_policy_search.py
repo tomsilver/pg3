@@ -147,26 +147,27 @@ def test_learn_policy():
                               problem_strs,
                               horizon=50,
                               heuristic_name="demo_plan_comparison")
-    assert policy_str == """LiftedDecisionList[
-LDLRule-pick-up:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: pick-up(?paper:paper, ?loc:loc)
-LDLRule-deliver:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), carrying(?paper:paper), wantspaper(?loc:loc)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: deliver(?paper:paper, ?loc:loc)
-LDLRule-move:
-    Parameters: [?from:loc, ?to:loc]
-    Pos State Pre: [at(?from:loc), safe(?from:loc), wantspaper(?to:loc)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: move(?from:loc, ?to:loc)
-]"""
+
+    assert policy_str == """(define (policy)
+  (:rule pick-up
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+  (:rule deliver
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (carrying ?paper) (wantspaper ?loc))
+    :goals (and )
+    :action (deliver ?paper ?loc)
+  )
+  (:rule move
+    :parameters (?from - loc ?to - loc)
+    :preconditions (and (at ?from) (safe ?from) (wantspaper ?to))
+    :goals (and )
+    :action (move ?from ?to)
+  )
+)"""
 
     policy_str = learn_policy(domain_str,
                               problem_strs,
@@ -174,9 +175,7 @@ LDLRule-move:
                               heuristic_name="demo_plan_comparison",
                               search_method="gbfs",
                               gbfs_max_expansions=0)
-    assert policy_str == """LiftedDecisionList[
-
-]"""
+    assert policy_str == """(define (policy)\n  \n)"""
 
     with pytest.raises(NotImplementedError) as e:
         learn_policy(domain_str,

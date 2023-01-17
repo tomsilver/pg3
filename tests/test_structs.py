@@ -210,12 +210,12 @@ def test_lifted_decision_lists():
         goal_preconditions={LiftedAtom(on, [cup_var, plate_var])},
         operator=pick_op)
 
-    assert str(pick_rule) == repr(pick_rule) == """LDLRule-MyPickRule:
-    Parameters: [?cup:cup_type, ?plate:plate_type, ?robot:robot_type]
-    Pos State Pre: [HandEmpty(?robot:robot_type), OnTable(?cup:cup_type)]
-    Neg State Pre: [Holding(?cup:cup_type)]
-    Goal Pre: [On(?cup:cup_type, ?plate:plate_type)]
-    Operator: Pick(?cup:cup_type)"""
+    assert str(pick_rule) == repr(pick_rule) == """(:rule MyPickRule
+    :parameters (?cup - cup_type ?plate - plate_type ?robot - robot_type)
+    :preconditions (and (HandEmpty ?robot) (OnTable ?cup)(not (Holding ?cup)))
+    :goals (and (On ?cup ?plate))
+    :action (Pick ?cup)
+  )"""
 
     place_rule = LDLRule(
         "MyPlaceRule",
@@ -225,12 +225,12 @@ def test_lifted_decision_lists():
         goal_preconditions={LiftedAtom(on, [cup_var, plate_var])},
         operator=place_op)
 
-    assert str(place_rule) == repr(place_rule) == """LDLRule-MyPlaceRule:
-    Parameters: [?cup:cup_type, ?plate:plate_type]
-    Pos State Pre: [Holding(?cup:cup_type)]
-    Neg State Pre: []
-    Goal Pre: [On(?cup:cup_type, ?plate:plate_type)]
-    Operator: Place(?cup:cup_type, ?plate:plate_type)"""
+    assert str(place_rule) == repr(place_rule) == """(:rule MyPlaceRule
+    :parameters (?cup - cup_type ?plate - plate_type)
+    :preconditions (and (Holding ?cup))
+    :goals (and (On ?cup ?plate))
+    :action (Place ?cup ?plate)
+  )"""
 
     assert pick_rule != place_rule
 
@@ -303,20 +303,20 @@ def test_lifted_decision_lists():
     ldl = LiftedDecisionList(rules)
     assert ldl.rules == rules
 
-    assert str(ldl) == """LiftedDecisionList[
-LDLRule-MyPlaceRule:
-    Parameters: [?cup:cup_type, ?plate:plate_type]
-    Pos State Pre: [Holding(?cup:cup_type)]
-    Neg State Pre: []
-    Goal Pre: [On(?cup:cup_type, ?plate:plate_type)]
-    Operator: Place(?cup:cup_type, ?plate:plate_type)
-LDLRule-MyPickRule:
-    Parameters: [?cup:cup_type, ?plate:plate_type, ?robot:robot_type]
-    Pos State Pre: [HandEmpty(?robot:robot_type), OnTable(?cup:cup_type)]
-    Neg State Pre: [Holding(?cup:cup_type)]
-    Goal Pre: [On(?cup:cup_type, ?plate:plate_type)]
-    Operator: Pick(?cup:cup_type)
-]"""
+    assert str(ldl) == """(define (policy)
+  (:rule MyPlaceRule
+    :parameters (?cup - cup_type ?plate - plate_type)
+    :preconditions (and (Holding ?cup))
+    :goals (and (On ?cup ?plate))
+    :action (Place ?cup ?plate)
+  )
+  (:rule MyPickRule
+    :parameters (?cup - cup_type ?plate - plate_type ?robot - robot_type)
+    :preconditions (and (HandEmpty ?robot) (OnTable ?cup)(not (Holding ?cup)))
+    :goals (and (On ?cup ?plate))
+    :action (Pick ?cup)
+  )
+)"""
 
     atoms = {GroundAtom(on_table, [cup1]), GroundAtom(hand_empty, [robot])}
     goal = {GroundAtom(on, [cup1, plate1])}

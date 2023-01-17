@@ -80,50 +80,50 @@ def test_pg3_search_operators():
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 3
     ldl1_1, ldl1_2, ldl1_3 = sorted(succ1, key=str)
-    assert str(ldl1_1) == """LiftedDecisionList[
-LDLRule-deliver:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), carrying(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: deliver(?paper:paper, ?loc:loc)
-]"""
+    assert str(ldl1_1) == """(define (policy)
+  (:rule deliver
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (carrying ?paper))
+    :goals (and )
+    :action (deliver ?paper ?loc)
+  )
+)"""
 
-    assert str(ldl1_2) == """LiftedDecisionList[
-LDLRule-move:
-    Parameters: [?from:loc, ?to:loc]
-    Pos State Pre: [at(?from:loc), safe(?from:loc)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: move(?from:loc, ?to:loc)
-]"""
+    assert str(ldl1_2) == """(define (policy)
+  (:rule move
+    :parameters (?from - loc ?to - loc)
+    :preconditions (and (at ?from) (safe ?from))
+    :goals (and )
+    :action (move ?from ?to)
+  )
+)"""
 
-    assert str(ldl1_3) == """LiftedDecisionList[
-LDLRule-pick-up:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: pick-up(?paper:paper, ?loc:loc)
-]"""
+    assert str(ldl1_3) == """(define (policy)
+  (:rule pick-up
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+)"""
 
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 6
     ldl2_1 = min(succ2, key=str)
-    assert str(ldl2_1) == """LiftedDecisionList[
-LDLRule-MyPickUp:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: pick-up(?paper:paper, ?loc:loc)
-LDLRule-deliver:
-    Parameters: [?paper:paper, ?loc:loc]
-    Pos State Pre: [at(?loc:loc), carrying(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: deliver(?paper:paper, ?loc:loc)
-]"""
+    assert str(ldl2_1) == """(define (policy)
+  (:rule MyPickUp
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+  (:rule deliver
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (carrying ?paper))
+    :goals (and )
+    :action (deliver ?paper ?loc)
+  )
+)"""
 
     # _AddConditionPG3SearchOperator
     op = _AddConditionPG3SearchOperator(preds, operators)
@@ -134,14 +134,14 @@ LDLRule-deliver:
     succ2 = list(op.get_successors(ldl2))
     assert len(succ2) == 36
     ldl2_1 = min(succ2, key=str)
-    assert str(ldl2_1) == """LiftedDecisionList[
-LDLRule-MyPickUp:
-    Parameters: [?loc:loc, ?paper:paper, ?x0:loc]
-    Pos State Pre: [at(?loc:loc), at(?x0:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: pick-up(?paper:paper, ?loc:loc)
-]"""
+    assert str(ldl2_1) == """(define (policy)
+  (:rule MyPickUp
+    :parameters (?loc - loc ?paper - paper ?x0 - loc)
+    :preconditions (and (at ?loc) (at ?x0) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+)"""
 
     # _DeleteConditionPG3SearchOperator
     op = _DeleteConditionPG3SearchOperator(preds, operators)
@@ -159,14 +159,14 @@ LDLRule-MyPickUp:
     succ3 = list(op.get_successors(ldl2_1))
     assert len(succ3) == 1
 
-    assert str(succ3[0]) == """LiftedDecisionList[
-LDLRule-MyPickUp:
-    Parameters: [?loc:loc, ?paper:paper]
-    Pos State Pre: [at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: []
-    Operator: pick-up(?paper:paper, ?loc:loc)
-]"""
+    assert str(succ3[0]) == """(define (policy)
+  (:rule MyPickUp
+    :parameters (?loc - loc ?paper - paper)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and )
+    :action (pick-up ?paper ?loc)
+  )
+)"""
 
     dummy_1 = Predicate("Dummy", [])  # zero arity
     atom_1 = LiftedAtom(dummy_1, [])
@@ -196,23 +196,23 @@ LDLRule-MyPickUp:
     succ4 = list(op.get_successors(ldl3))
     assert len(succ4) == 3
 
-    assert str(succ4[0]) == """LiftedDecisionList[
-LDLRule-MyOtherPickUp:
-    Parameters: [?dv:dummytype, ?loc:loc, ?paper:paper]
-    Pos State Pre: [at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: [OneMoreDummy(?dv:dummytype, ?loc:loc)]
-    Goal Pre: [OtherDummy()]
-    Operator: pick-up(?paper:paper, ?loc:loc)
-]"""
+    assert str(succ4[0]) == """(define (policy)
+  (:rule MyOtherPickUp
+    :parameters (?dv - dummytype ?loc - loc ?paper - paper)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper)(not (OneMoreDummy ?dv ?loc)))
+    :goals (and (OtherDummy ))
+    :action (pick-up ?paper ?loc)
+  )
+)"""
 
-    assert str(succ4[1]) == """LiftedDecisionList[
-LDLRule-MyOtherPickUp:
-    Parameters: [?loc:loc, ?paper:paper]
-    Pos State Pre: [Dummy(), at(?loc:loc), ishomebase(?loc:loc), unpacked(?paper:paper)]
-    Neg State Pre: []
-    Goal Pre: [OtherDummy()]
-    Operator: pick-up(?paper:paper, ?loc:loc)
-]"""
+    assert str(succ4[1]) == """(define (policy)
+  (:rule MyOtherPickUp
+    :parameters (?loc - loc ?paper - paper)
+    :preconditions (and (Dummy ) (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals (and (OtherDummy ))
+    :action (pick-up ?paper ?loc)
+  )
+)"""
 
     # _DeleteRulePG3SearchOperator
     op = _DeleteRulePG3SearchOperator(preds, operators)

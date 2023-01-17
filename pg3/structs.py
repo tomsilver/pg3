@@ -355,13 +355,30 @@ class LDLRule:
 
     @cached_property
     def _str(self) -> str:
-        op_param_str = ", ".join([str(v) for v in self.operator.parameters])
-        return f"""LDLRule-{self.name}:
-    Parameters: {self.parameters}
-    Pos State Pre: {sorted(self.pos_state_preconditions, key=str)}
-    Neg State Pre: {sorted(self.neg_state_preconditions, key=str)}
-    Goal Pre: {sorted(self.goal_preconditions, key=str)}
-    Operator: {self.operator.name}({op_param_str})"""
+        parameter_str = "(" + " ".join(
+            [f"{p.name} - {p.type.name}" for p in self.parameters]) + ")"
+
+        def _atom_to_str(atom: LiftedAtom) -> str:
+            args_str = " ".join([v.name for v in atom.variables])
+            return f"({atom.predicate.name} {args_str})"
+
+        inner_preconditions_str = " ".join(
+            [_atom_to_str(a) for a in sorted(self.pos_state_preconditions)])
+        inner_preconditions_str += " ".join([
+            "(not " + _atom_to_str(a) + ")"
+            for a in sorted(self.neg_state_preconditions)
+        ])
+        goals_str = "(and " + " ".join(
+            [_atom_to_str(a) for a in sorted(self.goal_preconditions)]) + ")"
+        preconditions_str = "(and " + inner_preconditions_str + ")"
+        action_param_str = " ".join([v.name for v in self.operator.parameters])
+        action_str = f"({self.operator.name} {action_param_str})"
+        return f"""(:rule {self.name}
+    :parameters {parameter_str}
+    :preconditions {preconditions_str}
+    :goals {goals_str}
+    :action {action_str}
+  )"""
 
     @cached_property
     def _hash(self) -> int:
@@ -466,8 +483,8 @@ class LiftedDecisionList:
         return all(r1 == r2 for r1, r2 in zip(self.rules, other.rules))
 
     def __str__(self) -> str:
-        rule_str = "\n".join(str(r) for r in self.rules)
-        return f"LiftedDecisionList[\n{rule_str}\n]"
+        rule_str = "\n  ".join(str(r) for r in self.rules)
+        return f"""(define (policy)\n  {rule_str}\n)"""
 
 
 VarToObjSub = Dict[Variable, Object]
