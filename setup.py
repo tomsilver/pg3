@@ -17,8 +17,7 @@ setup(name="pg3",
           "pyperplan",
           "typing-extensions",
       ],
-      setup_requires=['setuptools_scm'],
-      include_package_data=True,
+      package_data={"pg3": ["py.typed"]},
       extras_require={
           "develop": [
               "mypy", "pytest-cov>=2.12.1", "pytest-pylint>=0.18.0",
