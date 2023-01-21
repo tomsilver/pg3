@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 import itertools
 import logging
+import re
 from dataclasses import dataclass
 from graphlib import TopologicalSorter
 from typing import Collection, Dict, FrozenSet, Iterator, List, Optional, \
@@ -103,6 +104,26 @@ def _cached_all_ground_ldl_rules(
     return ground_rules
 
 
+def get_all_valid_actions(
+    rule: LDLRule,
+    atoms: Set[GroundAtom],
+    objects: Set[Object],
+    goal: Set[GroundAtom],
+    static_predicates: Optional[Set[Predicate]] = None,
+    init_atoms: Optional[Collection[GroundAtom]] = None
+) -> Iterator[_GroundSTRIPSOperator]:
+    """Get all valid actions for an LRL rule in the given state."""
+    for ground_rule in all_ground_ldl_rules(
+            rule,
+            objects,
+            static_predicates=static_predicates,
+            init_atoms=init_atoms):
+        if ground_rule.pos_state_preconditions.issubset(atoms) and \
+            not ground_rule.neg_state_preconditions & atoms and \
+            ground_rule.goal_preconditions.issubset(goal):
+            yield ground_rule.ground_operator
+
+
 def query_ldl(
     ldl: LiftedDecisionList,
     atoms: Set[GroundAtom],
@@ -120,15 +141,14 @@ def query_ldl(
     no rule is applicable, returns None.
     """
     for rule in ldl.rules:
-        for ground_rule in all_ground_ldl_rules(
+        for ground_op in get_all_valid_actions(
                 rule,
+                atoms,
                 objects,
+                goal,
                 static_predicates=static_predicates,
                 init_atoms=init_atoms):
-            if ground_rule.pos_state_preconditions.issubset(atoms) and \
-               not ground_rule.neg_state_preconditions & atoms and \
-               ground_rule.goal_preconditions.issubset(goal):
-                return ground_rule.ground_operator
+            return ground_op
     return None
 
 
@@ -553,3 +573,195 @@ def pddl_problem_str_to_task(pddl_problem_str: str, pddl_domain_str: str,
     # Finalize the task.
     task = Task(objects, init, goal)
     return task
+
+
+def find_balanced_expression(s: str, index: int) -> str:
+    """Find balanced expression in string starting from given index."""
+    assert s[index] == "("
+    start_index = index
+    balance = 1
+    while balance != 0:
+        index += 1
+        symbol = s[index]
+        if symbol == "(":
+            balance += 1
+        elif symbol == ")":
+            balance -= 1
+    return s[start_index:index + 1]
+
+
+def find_all_balanced_expressions(s: str) -> List[str]:
+    """Return a list of all balanced expressions in a string, starting from the
+    beginning."""
+    assert s[0] == "("
+    assert s[-1] == ")"
+    exprs = []
+    index = 0
+    start_index = index
+    balance = 1
+    while index < len(s) - 1:
+        index += 1
+        if balance == 0:
+            exprs.append(s[start_index:index])
+            # Jump to next "(".
+            while True:
+                if s[index] == "(":
+                    break
+                index += 1
+            start_index = index
+            balance = 1
+            continue
+        symbol = s[index]
+        if symbol == "(":
+            balance += 1
+        elif symbol == ")":
+            balance -= 1
+    assert balance == 0
+    exprs.append(s[start_index:index + 1])
+    return exprs
+
+
+def parse_ldl_from_str(
+        ldl_str: str, types: Collection[Type],
+        predicates: Collection[Predicate],
+        operators: Collection[STRIPSOperator]) -> LiftedDecisionList:
+    """Parse a lifted decision list from a string representation of it."""
+    parser = _LDLParser(types, predicates, operators)
+    return parser.parse(ldl_str)
+
+
+class _LDLParser:
+    """Parser for lifted decision lists from strings."""
+
+    def __init__(self, types: Collection[Type],
+                 predicates: Collection[Predicate],
+                 operators: Collection[STRIPSOperator]) -> None:
+        self._op_name_to_op = {
+            operator.name: operator
+            for operator in operators
+        }
+        self._type_name_to_type = {t.name: t for t in types}
+        self._pred_name_to_pred = {p.name: p for p in predicates}
+
+    def parse(self, ldl_str: str) -> LiftedDecisionList:
+        """Run parsing."""
+        rules = []
+        rule_matches = re.finditer(r"\(:rule", ldl_str)
+        for start in rule_matches:
+            rule_str = find_balanced_expression(ldl_str, start.start())
+            rule = self._parse_rule(rule_str)
+            rules.append(rule)
+        return LiftedDecisionList(rules)
+
+    def _parse_rule(self, rule_str: str) -> LDLRule:
+        rule_pattern = r"\(:rule(.*):parameters(.*):preconditions(.*)" + \
+                       r":goals(.*):action(.*)\)"
+        match_result = re.match(rule_pattern, rule_str, re.DOTALL)
+        assert match_result is not None
+        # Remove white spaces.
+        matches = [m.strip().rstrip() for m in match_result.groups()]
+        # Unpack the matches.
+        rule_name, params_str, preconds_str, goals_str, operator_str = matches
+        # Handle the parameters.
+        assert "?" in params_str, "Assuming all rules have parameters."
+        variable_name_to_variable = {}
+        assert params_str.endswith(")")
+        for param_str in params_str[:-1].split("?")[1:]:
+            param_name, param_type_str = param_str.split("-")
+            param_name = param_name.strip()
+            param_type_str = param_type_str.strip()
+            variable_name = "?" + param_name
+            param_type = self._type_name_to_type[param_type_str]
+            variable = Variable(variable_name, param_type)
+            variable_name_to_variable[variable_name] = variable
+        # Handle the preconditions.
+        pos_preconds, neg_preconds = self._parse_lifted_atoms(
+            preconds_str, variable_name_to_variable)
+        # Handle the goals.
+        pos_goals, neg_goals = self._parse_lifted_atoms(
+            goals_str, variable_name_to_variable)
+        assert not neg_goals, "Negative LDL goals not currently supported"
+        # Handle the STRIPSOperator.
+        operator = self._parse_into_operator(operator_str,
+                                             variable_name_to_variable)
+        # Finalize the rule.
+        params = sorted(variable_name_to_variable.values())
+        return LDLRule(rule_name, params, pos_preconds, neg_preconds,
+                       pos_goals, operator)
+
+    def _parse_lifted_atoms(
+        self, atoms_str: str, variable_name_to_variable: Dict[str, Variable]
+    ) -> Tuple[Set[LiftedAtom], Set[LiftedAtom]]:
+        """Parse the given string (representing either preconditions or
+        effects) into a set of positive lifted atoms and a set of negative
+        lifted atoms.
+
+        Check against params to make sure typing is correct.
+        """
+        assert atoms_str[0] == "("
+        assert atoms_str[-1] == ")"
+
+        # Handle conjunctions.
+        if atoms_str.startswith("(and") and atoms_str[4] in (" ", "\n", "("):
+            clauses = find_all_balanced_expressions(atoms_str[4:-1].strip())
+            pos_atoms, neg_atoms = set(), set()
+            for clause in clauses:
+                clause_pos_atoms, clause_neg_atoms = self._parse_lifted_atoms(
+                    clause, variable_name_to_variable)
+                pos_atoms |= clause_pos_atoms
+                neg_atoms |= clause_neg_atoms
+            return pos_atoms, neg_atoms
+
+        # Handle negations.
+        if atoms_str.startswith("(not") and atoms_str[4] in (" ", "\n", "("):
+            # Only contains a single literal inside not.
+            split_strs = atoms_str[4:-1].strip()[1:-1].strip().split()
+            pred = self._pred_name_to_pred[split_strs[0]]
+            args = [variable_name_to_variable[arg] for arg in split_strs[1:]]
+            lifted_atom = LiftedAtom(pred, args)
+            return set(), {lifted_atom}
+
+        # Handle single positive atoms.
+        split_strs = atoms_str[1:-1].split()
+        # Empty conjunction.
+        if not split_strs:
+            return set(), set()
+        pred = self._pred_name_to_pred[split_strs[0]]
+        args = [variable_name_to_variable[arg] for arg in split_strs[1:]]
+        lifted_atom = LiftedAtom(pred, args)
+        return {lifted_atom}, set()
+
+    def _parse_into_operator(
+            self, operator_str: str,
+            variable_name_to_variable: Dict[str, Variable]) -> STRIPSOperator:
+        """Parse the given string into an STRIPSOperator."""
+        assert operator_str[0] == "("
+        assert operator_str[-1] == ")"
+        operator_str = operator_str[1:-1].split()[0]
+        operator = self._op_name_to_op[operator_str]
+        # Validate parameters.
+        variables = variable_name_to_variable.values()
+        for v in operator.parameters:
+            assert v in variables, \
+                "STRIPSOperator parameter {v} missing from LDL rule"
+        return operator
+
+
+def policy_satisfied(policy_str: str, problem_str: str, domain_str: str,
+                     action: str) -> bool:
+    """Check if an action satisfies this policy in the initial state."""
+    types, predicates, operators = parse_pddl_domain(domain_str)
+    policy = parse_ldl_from_str(policy_str, types, predicates, operators)
+    task = pddl_problem_str_to_task(problem_str, domain_str, types, predicates)
+    for rule in policy.rules:
+        all_valid_actions = {
+            o.pddl_str
+            for o in get_all_valid_actions(rule, task.init, task.objects,
+                                           task.goal)
+        }
+        if action in all_valid_actions:
+            return True
+        # The rule returns some action(s), but not the given one.
+        if all_valid_actions:
+            return False
+    return False

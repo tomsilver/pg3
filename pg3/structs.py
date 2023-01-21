@@ -284,6 +284,14 @@ class _GroundSTRIPSOperator:
         """Name of this ground STRIPSOperator."""
         return self.parent.name
 
+    @cached_property
+    def pddl_str(self) -> str:
+        """PDDL representation of this ground operator."""
+        if not self.objects:
+            return f"({self.name})"
+        objects_str = " ".join([o.name for o in self.objects])
+        return f"({self.name} {objects_str})"
+
     def __str__(self) -> str:
         return self._str
 
@@ -362,15 +370,24 @@ class LDLRule:
             args_str = " ".join([v.name for v in atom.variables])
             return f"({atom.predicate.name} {args_str})"
 
-        inner_preconditions_str = " ".join(
-            [_atom_to_str(a) for a in sorted(self.pos_state_preconditions)])
-        inner_preconditions_str += " ".join([
+        inner_preconditions_strs = [
+            _atom_to_str(a) for a in sorted(self.pos_state_preconditions)
+        ]
+        inner_preconditions_strs += [
             "(not " + _atom_to_str(a) + ")"
             for a in sorted(self.neg_state_preconditions)
-        ])
-        goals_str = "(and " + " ".join(
-            [_atom_to_str(a) for a in sorted(self.goal_preconditions)]) + ")"
-        preconditions_str = "(and " + inner_preconditions_str + ")"
+        ]
+        preconditions_str = " ".join(inner_preconditions_strs)
+        if len(inner_preconditions_strs) > 1:
+            preconditions_str = "(and " + preconditions_str + ")"
+        elif not inner_preconditions_strs:
+            preconditions_str = "()"
+        goals_strs = [_atom_to_str(a) for a in sorted(self.goal_preconditions)]
+        goals_str = " ".join(goals_strs)
+        if len(goals_strs) > 1:
+            goals_str = "(and " + goals_str + ")"
+        elif not goals_strs:
+            goals_str = "()"
         action_param_str = " ".join([v.name for v in self.operator.parameters])
         action_str = f"({self.operator.name} {action_param_str})"
         return f"""(:rule {self.name}
