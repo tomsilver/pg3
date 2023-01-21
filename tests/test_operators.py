@@ -84,7 +84,7 @@ def test_pg3_search_operators():
   (:rule deliver
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (carrying ?paper))
-    :goals (and )
+    :goals ()
     :action (deliver ?paper ?loc)
   )
 )"""
@@ -93,7 +93,7 @@ def test_pg3_search_operators():
   (:rule move
     :parameters (?from - loc ?to - loc)
     :preconditions (and (at ?from) (safe ?from))
-    :goals (and )
+    :goals ()
     :action (move ?from ?to)
   )
 )"""
@@ -102,7 +102,7 @@ def test_pg3_search_operators():
   (:rule pick-up
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
 )"""
@@ -114,13 +114,13 @@ def test_pg3_search_operators():
   (:rule MyPickUp
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
   (:rule deliver
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (carrying ?paper))
-    :goals (and )
+    :goals ()
     :action (deliver ?paper ?loc)
   )
 )"""
@@ -138,7 +138,7 @@ def test_pg3_search_operators():
   (:rule MyPickUp
     :parameters (?loc - loc ?paper - paper ?x0 - loc)
     :preconditions (and (at ?loc) (at ?x0) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
 )"""
@@ -163,7 +163,7 @@ def test_pg3_search_operators():
   (:rule MyPickUp
     :parameters (?loc - loc ?paper - paper)
     :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
 )"""
@@ -199,8 +199,8 @@ def test_pg3_search_operators():
     assert str(succ4[0]) == """(define (policy)
   (:rule MyOtherPickUp
     :parameters (?dv - dummytype ?loc - loc ?paper - paper)
-    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper)(not (OneMoreDummy ?dv ?loc)))
-    :goals (and (OtherDummy ))
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper) (not (OneMoreDummy ?dv ?loc)))
+    :goals (OtherDummy )
     :action (pick-up ?paper ?loc)
   )
 )"""
@@ -209,7 +209,7 @@ def test_pg3_search_operators():
   (:rule MyOtherPickUp
     :parameters (?loc - loc ?paper - paper)
     :preconditions (and (Dummy ) (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and (OtherDummy ))
+    :goals (OtherDummy )
     :action (pick-up ?paper ?loc)
   )
 )"""
