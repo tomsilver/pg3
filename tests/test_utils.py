@@ -58,3 +58,97 @@ def test_create_task_planning_heuristic_base_class():
     base_heuristic = _TaskPlanningHeuristic("base", set(), set(), set())
     with pytest.raises(NotImplementedError):
         base_heuristic(set())
+
+
+def test_parse_ldl_from_str():
+    """Tests for parse_ldl_from_str()."""
+    domain_str = """(define (domain gripper-strips)
+   (:predicates (room ?r)
+        (ball ?b)
+        (gripper ?g)
+        (at-robby ?r)
+        (at ?b ?r)
+        (free ?g)
+        (carry ?o ?g))
+
+   (:action move
+       :parameters  (?from ?to)
+       :precondition (and  (room ?from) (room ?to) (at-robby ?from))
+       :effect (and  (at-robby ?to)
+             (not (at-robby ?from))))
+
+
+
+   (:action pick
+       :parameters (?obj ?room ?gripper)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+                (at ?obj ?room) (at-robby ?room) (free ?gripper))
+       :effect (and (carry ?obj ?gripper)
+            (not (at ?obj ?room)) 
+            (not (free ?gripper))))
+
+
+   (:action drop
+       :parameters  (?obj  ?room ?gripper)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+                (carry ?obj ?gripper) (at-robby ?room))
+       :effect (and (at ?obj ?room)
+            (free ?gripper)
+            (not (carry ?obj ?gripper)))))"""
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+
+    # pylint: disable=line-too-long
+    ldl_str = """(define (policy)
+	(:rule rule1 
+		:parameters (?gripper - object ?obj - object ?room - object)		
+        :preconditions (and (ball ?obj) (room ?room) (gripper ?gripper) (not (at ?obj ?room)) (carry ?obj ?gripper) (at-robby ?room))
+        :goals (at ?obj ?room)
+		:action (drop ?obj ?room ?gripper)
+	)
+	(:rule rule2 
+		:parameters (?goalroom - object ?gripper - object ?obj - object ?room - object)		
+        :preconditions (and (ball ?obj) (room ?room) (gripper ?gripper) (at ?obj ?room) (at-robby ?room) (free ?gripper) (not (at ?obj ?goalroom)))
+        :goals ()
+		:action (pick ?obj ?room ?gripper)
+	)
+	(:rule rule3
+		:parameters (?from - object ?gripper - object ?obj - object ?to - object)
+		:preconditions (and (room ?from) (room ?to) (at-robby ?from) (carry ?obj ?gripper)) 
+		:goals (at ?obj ?to)
+		:action (move ?from ?to)
+	)
+	(:rule rule4
+		:parameters (?from - object ?goalroom- object ?gripper - object ?obj - object ?to - object)
+		:preconditions (and (room ?from) (room ?to) (at-robby ?from) (free ?gripper) (at ?obj ?to)) 
+		:goals (at ?obj ?goalroom)
+		:action (move ?from ?to)
+	)
+)"""
+
+    ldl = utils.parse_ldl_from_str(ldl_str, types, predicates, operators)
+    assert str(ldl) == """(define (policy)
+  (:rule rule1
+    :parameters (?gripper - object ?obj - object ?room - object)
+    :preconditions (and (at-robby ?room) (ball ?obj) (carry ?obj ?gripper) (gripper ?gripper) (room ?room) (not (at ?obj ?room)))
+    :goals (at ?obj ?room)
+    :action (drop ?obj ?room ?gripper)
+  )
+  (:rule rule2
+    :parameters (?goalroom - object ?gripper - object ?obj - object ?room - object)
+    :preconditions (and (at ?obj ?room) (at-robby ?room) (ball ?obj) (free ?gripper) (gripper ?gripper) (room ?room) (not (at ?obj ?goalroom)))
+    :goals ()
+    :action (pick ?obj ?room ?gripper)
+  )
+  (:rule rule3
+    :parameters (?from - object ?gripper - object ?obj - object ?to - object)
+    :preconditions (and (at-robby ?from) (carry ?obj ?gripper) (room ?from) (room ?to))
+    :goals (at ?obj ?to)
+    :action (move ?from ?to)
+  )
+  (:rule rule4
+    :parameters (?from - object ?goalroom - object ?gripper - object ?obj - object ?to - object)
+    :preconditions (and (at ?obj ?to) (at-robby ?from) (free ?gripper) (room ?from) (room ?to))
+    :goals (at ?obj ?goalroom)
+    :action (move ?from ?to)
+  )
+)"""
