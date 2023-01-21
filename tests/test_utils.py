@@ -190,7 +190,7 @@ def test_policy_satisfied():
 	)
 )"""
 
-    problem_str = """(define (problem moving) 
+    problem_str = """(define (problem moving)
     (:domain dummy)
 
     (:objects loc1 loc2 loc3)
@@ -209,7 +209,7 @@ def test_policy_satisfied():
     assert not utils.policy_satisfied(ldl_str, problem_str, domain_str,
                                       "(grab ball1)")
 
-    problem_str2 = """(define (problem moving) 
+    problem_str2 = """(define (problem moving)
         (:domain dummy)
 
         (:objects ball1 ball2)
