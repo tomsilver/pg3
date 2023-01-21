@@ -152,3 +152,72 @@ def test_parse_ldl_from_str():
     :action (move ?from ?to)
   )
 )"""
+
+
+def test_policy_satisfied():
+    """Tests for policy_satisfied()."""
+    domain_str = """(define (domain dummy)
+   (:predicates (at ?loc) (ball ?ball) (have ?ball) (available ?ball))
+
+   (:action move
+       :parameters  (?from ?to)
+       :precondition (and  (at ?from))
+       :effect (and (at ?to)
+             (not (at ?from)))
+    )
+
+   (:action grab
+       :parameters (?ball)
+       :precondition (ball ?ball)
+       :effect (and (have ?ball))
+   )
+)"""
+
+    # pylint: disable=line-too-long
+    ldl_str = """(define (policy)
+	(:rule rule1 
+		:parameters (?from - object ?to - object)		
+        :preconditions (at ?from)
+        :goals (at ?to)
+		:action (move ?from ?to)
+	)
+    (:rule rule2
+		:parameters (?ball - object)		
+        :preconditions (and (ball ?ball) (available ?ball))
+        :goals ()
+		:action (grab ?ball)
+	)
+	)
+)"""
+
+    problem_str = """(define (problem moving) 
+    (:domain dummy)
+
+    (:objects loc1 loc2 loc3)
+
+    (:init (at loc3) )
+
+    (:goal (at loc2) )
+)"""
+
+    assert utils.policy_satisfied(ldl_str, problem_str, domain_str,
+                                  "(move loc3 loc2)")
+    assert not utils.policy_satisfied(ldl_str, problem_str, domain_str,
+                                      "(move loc3 loc1)")
+    assert not utils.policy_satisfied(ldl_str, problem_str, domain_str,
+                                      "(move loc1 loc2)")
+    assert not utils.policy_satisfied(ldl_str, problem_str, domain_str,
+                                      "(grab ball1)")
+
+    problem_str2 = """(define (problem moving) 
+        (:domain dummy)
+
+        (:objects ball1 ball2)
+
+        (:init (have ball1) (ball ball1) (ball ball2))
+
+        (:goal (have ball2))
+    )"""
+
+    assert not utils.policy_satisfied(ldl_str, problem_str2, domain_str,
+                                      "(move loc3 loc2)")
