@@ -152,19 +152,19 @@ def test_learn_policy():
   (:rule pick-up
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
   (:rule deliver
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (carrying ?paper) (wantspaper ?loc))
-    :goals (and )
+    :goals ()
     :action (deliver ?paper ?loc)
   )
   (:rule move
     :parameters (?from - loc ?to - loc)
     :preconditions (and (at ?from) (safe ?from) (wantspaper ?to))
-    :goals (and )
+    :goals ()
     :action (move ?from ?to)
   )
 )"""
@@ -215,7 +215,7 @@ def test_learn_policy():
   (:rule pick-up
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals (and )
+    :goals ()
     :action (pick-up ?paper ?loc)
   )
 )"""

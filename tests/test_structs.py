@@ -170,6 +170,10 @@ def test_operators():
     assert ground_op < ground_op3
     assert ground_op3 > ground_op
     assert hash(ground_op) == hash(ground_op2)
+    assert ground_op2.pddl_str == "(Pick cup plate)"
+    noop_strips_operator = STRIPSOperator("Noop", [], set(), set(), set())
+    ground_noop = noop_strips_operator.ground(tuple())
+    assert ground_noop.pddl_str == "(Noop)"
 
 
 def test_lifted_decision_lists():
@@ -212,8 +216,8 @@ def test_lifted_decision_lists():
 
     assert str(pick_rule) == repr(pick_rule) == """(:rule MyPickRule
     :parameters (?cup - cup_type ?plate - plate_type ?robot - robot_type)
-    :preconditions (and (HandEmpty ?robot) (OnTable ?cup)(not (Holding ?cup)))
-    :goals (and (On ?cup ?plate))
+    :preconditions (and (HandEmpty ?robot) (OnTable ?cup) (not (Holding ?cup)))
+    :goals (On ?cup ?plate)
     :action (Pick ?cup)
   )"""
 
@@ -227,8 +231,8 @@ def test_lifted_decision_lists():
 
     assert str(place_rule) == repr(place_rule) == """(:rule MyPlaceRule
     :parameters (?cup - cup_type ?plate - plate_type)
-    :preconditions (and (Holding ?cup))
-    :goals (and (On ?cup ?plate))
+    :preconditions (Holding ?cup)
+    :goals (On ?cup ?plate)
     :action (Place ?cup ?plate)
   )"""
 
@@ -306,14 +310,14 @@ def test_lifted_decision_lists():
     assert str(ldl) == """(define (policy)
   (:rule MyPlaceRule
     :parameters (?cup - cup_type ?plate - plate_type)
-    :preconditions (and (Holding ?cup))
-    :goals (and (On ?cup ?plate))
+    :preconditions (Holding ?cup)
+    :goals (On ?cup ?plate)
     :action (Place ?cup ?plate)
   )
   (:rule MyPickRule
     :parameters (?cup - cup_type ?plate - plate_type ?robot - robot_type)
-    :preconditions (and (HandEmpty ?robot) (OnTable ?cup)(not (Holding ?cup)))
-    :goals (and (On ?cup ?plate))
+    :preconditions (and (HandEmpty ?robot) (OnTable ?cup) (not (Holding ?cup)))
+    :goals (On ?cup ?plate)
     :action (Pick ?cup)
   )
 )"""
@@ -359,3 +363,25 @@ def test_lifted_decision_lists():
 
     # Make sure lifted decision lists are hashable.
     assert len({ldl, ldl2}) == 1
+
+    # Special cases for strings.
+    noop = STRIPSOperator("Noop",
+                          parameters=[],
+                          preconditions=set(),
+                          add_effects=set(),
+                          delete_effects=set())
+    ldl_rule_no_preconds = LDLRule("MyUniversalRule",
+                                   parameters=[cup_var, plate_var, robot_var],
+                                   pos_state_preconditions=set(),
+                                   neg_state_preconditions=set(),
+                                   goal_preconditions={
+                                       LiftedAtom(on, [cup_var, plate_var]),
+                                       LiftedAtom(hand_empty, [robot_var])
+                                   },
+                                   operator=noop)
+    assert str(ldl_rule_no_preconds) == """(:rule MyUniversalRule
+    :parameters (?cup - cup_type ?plate - plate_type ?robot - robot_type)
+    :preconditions ()
+    :goals (and (HandEmpty ?robot) (On ?cup ?plate))
+    :action (Noop )
+  )"""
