@@ -18,6 +18,7 @@ def learn_policy(domain_str: str,
                  problem_strs: List[str],
                  horizon: int,
                  demos: Optional[List[List[str]]] = None,
+                 max_rule_params: int = 8,
                  heuristic_name: str = "policy_guided",
                  search_method: str = "hill_climbing",
                  task_planning_heuristic: str = "lmcut",
@@ -37,8 +38,8 @@ def learn_policy(domain_str: str,
         for problem_str in problem_strs
     ]
     ldl = _run_policy_search(predicates, operators, train_tasks, horizon,
-                             demos, heuristic_name, search_method,
-                             task_planning_heuristic,
+                             demos, max_rule_params, heuristic_name,
+                             search_method, task_planning_heuristic,
                              max_policy_guided_rollout, gbfs_max_expansions,
                              hc_enforced_depth)
     return str(ldl)
@@ -49,6 +50,7 @@ def _run_policy_search(predicates: Set[Predicate],
                        train_tasks: Sequence[Task],
                        horizon: int,
                        demos: Optional[List[List[str]]] = None,
+                       max_rule_params: int = 8,
                        heuristic_name: str = "policy_guided",
                        search_method: str = "hill_climbing",
                        task_planning_heuristic: str = "lmcut",
@@ -78,6 +80,10 @@ def _run_policy_search(predicates: Set[Predicate],
     def get_successors(ldl: _S) -> Iterator[Tuple[_A, _S, float]]:
         for op in search_operators:
             for i, child in enumerate(op.get_successors(ldl)):
+                if any(
+                        len(rule.parameters) > max_rule_params
+                        for rule in child.rules):
+                    continue
                 yield (op, i), child, 1.0  # cost always 1
 
     if search_method == "gbfs":

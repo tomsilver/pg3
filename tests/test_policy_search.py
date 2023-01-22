@@ -219,3 +219,10 @@ def test_learn_policy():
     :action (pick-up ?paper ?loc)
   )
 )"""
+
+    policy_str = learn_policy(domain_str,
+                              problem_strs,
+                              horizon=50,
+                              max_rule_params=0,
+                              heuristic_name="demo_plan_comparison")
+    assert policy_str == """(define (policy)\n  \n)"""
