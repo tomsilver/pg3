@@ -9,7 +9,7 @@ from pg3 import utils
 from pg3.heuristics import _DemoPlanComparisonPG3Heuristic, _PG3Heuristic, \
     _PolicyEvaluationPG3Heuristic, _PolicyGuidedPG3Heuristic
 from pg3.operators import _AddConditionPG3SearchOperator, \
-    _AddRulePG3SearchOperator, _PG3SearchOperator
+    _AddRulePG3SearchOperator, _PG3SearchOperator, _BottomUpOperatorPG3SearchOperator
 from pg3.search import run_gbfs, run_hill_climbing
 from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task
 
@@ -64,7 +64,7 @@ def _run_policy_search(predicates: Set[Predicate],
     _A: TypeAlias = Tuple[_PG3SearchOperator, int]
 
     # Create the PG3 search operators.
-    search_operators = _create_search_operators(predicates, operators)
+    search_operators = _create_search_operators(predicates, operators, train_tasks, demos)
 
     # The heuristic is what distinguishes PG3 from baseline approaches.
     heuristic = _create_heuristic(heuristic_name, predicates, operators,
@@ -109,12 +109,15 @@ def _run_policy_search(predicates: Set[Predicate],
 
 def _create_search_operators(
         predicates: Set[Predicate],
-        operators: Set[STRIPSOperator]) -> List[_PG3SearchOperator]:
+        operators: Set[STRIPSOperator],
+            train_tasks: Sequence[Task],
+                      demos: Optional[List[List[str]]]) -> List[_PG3SearchOperator]:
     search_operator_classes = [
+        _BottomUpOperatorPG3SearchOperator,
         _AddRulePG3SearchOperator,
         _AddConditionPG3SearchOperator,
     ]
-    return [cls(predicates, operators) for cls in search_operator_classes]
+    return [cls(predicates, operators, train_tasks, demos) for cls in search_operator_classes]
 
 
 def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],
