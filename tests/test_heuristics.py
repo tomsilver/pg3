@@ -212,3 +212,11 @@ def test_pg3_heuristics():
         score_sequence = [heuristic(ldl) for ldl in policy_sequence]
         for i in range(len(score_sequence) - 1):
             assert score_sequence[i] >= score_sequence[i + 1]
+
+    # Make sure heuristics don't crash when planning fails.
+    ldl = policy_sequence[0]
+    for heuristic_cls in [
+            _PolicyGuidedPG3Heuristic, _DemoPlanComparisonPG3Heuristic
+    ]:
+        heuristic = heuristic_cls(preds, set(), train_tasks, horizon)
+        assert heuristic(ldl) > 0

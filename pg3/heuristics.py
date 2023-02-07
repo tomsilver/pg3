@@ -15,6 +15,10 @@ from pg3.structs import GroundAtom, LiftedDecisionList, Object, Predicate, \
     STRIPSOperator, Task, _GroundSTRIPSOperator
 
 
+class _PlanningFailure(Exception):
+    """Raised when planning for demo generation fails."""
+
+
 class _PG3Heuristic(abc.ABC):
     """Given an LDL policy, produce a score, with lower better."""
 
@@ -106,7 +110,10 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
 
     def _get_score_for_task(self, ldl: LiftedDecisionList,
                             task_idx: int) -> float:
-        atom_plan = self._get_atom_plan_for_task(ldl, task_idx)
+        try:
+            atom_plan = self._get_atom_plan_for_task(ldl, task_idx)
+        except _PlanningFailure:
+            return self._horizon  # worst possible score
         # Note: we need the goal because it's an input to the LDL policy.
         task = self._train_tasks[task_idx]
         return self._count_missed_steps(ldl, atom_plan, task.objects,
@@ -184,7 +191,8 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
                                                 get_successors=get_successors,
                                                 heuristic=heuristic)
 
-        assert check_goal(planned_frozen_atoms_seq[-1])
+        if not check_goal(planned_frozen_atoms_seq[-1]):
+            raise _PlanningFailure()
 
         return [set(atoms) for atoms in planned_frozen_atoms_seq]
 
@@ -270,6 +278,7 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
             num_rollout_steps=self._max_policy_guided_rollout,
             rollout_step_cost=0)
 
-        assert check_goal(planned_frozen_atoms_seq[-1])
+        if not check_goal(planned_frozen_atoms_seq[-1]):
+            raise _PlanningFailure()
 
         return [set(atoms) for atoms in planned_frozen_atoms_seq]
