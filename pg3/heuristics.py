@@ -186,10 +186,11 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
             objects=objects,
         )
 
-        planned_frozen_atoms_seq, _ = run_astar(initial_state=frozenset(init),
-                                                check_goal=check_goal,
-                                                get_successors=get_successors,
-                                                heuristic=heuristic)
+        planned_frozen_atoms_seq, _ = run_astar(
+            initial_states=[frozenset(init)],
+            check_goal=check_goal,
+            get_successors=get_successors,
+            heuristic=heuristic)
 
         if not check_goal(planned_frozen_atoms_seq[-1]):
             raise _PlanningFailure()
@@ -269,7 +270,7 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
             return utils.query_ldl(ldl, set(atoms), objects, goal)
 
         planned_frozen_atoms_seq, _ = run_policy_guided_astar(
-            initial_state=frozenset(init),
+            initial_states=[frozenset(init)],
             check_goal=check_goal,
             get_valid_actions=get_valid_actions,
             get_next_state=get_next_state,
