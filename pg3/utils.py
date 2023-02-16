@@ -459,7 +459,12 @@ def _domain_str_to_pyperplan_domain(domain_str: str) -> PyperplanDomain:
     domain_ast = parse_domain_def(parse_lisp_iterator(domain_str.split("\n")))
     visitor = TraversePDDLDomain()
     domain_ast.accept(visitor)
-    return visitor.domain
+    domain = visitor.domain
+    # Fix edge case where "object" is treated specially by pyperplan.
+    for type_name, typ in domain.types.items():
+        if type_name == "object":
+            typ.parent = None
+    return domain
 
 
 def parse_pddl_domain(

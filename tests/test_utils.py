@@ -221,3 +221,148 @@ def test_policy_satisfied():
 
     assert not utils.policy_satisfied(ldl_str, problem_str2, domain_str,
                                       "(move loc3 loc2)")
+
+
+def test_parse_pddl():
+    """Tests for parse_pddl_domain() and pddl_problem_str_to_task()."""
+    # Test parsing an untyped domain.
+    domain_str = """(define (domain gripper)
+   (:predicates (room ?r)
+		(ball ?b)
+		(gripper ?g)
+		(at-robby ?r)
+		(at ?b ?r)
+		(free ?g)
+		(carry ?o ?g))
+
+   (:action move
+       :parameters  (?from ?to)
+       :precondition (and  (room ?from) (room ?to) (at-robby ?from))
+       :effect (and  (at-robby ?to)
+		     (not (at-robby ?from))))
+
+   (:action pick
+       :parameters (?obj ?room ?gripper)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+			    (at ?obj ?room) (at-robby ?room) (free ?gripper))
+       :effect (and (carry ?obj ?gripper)
+		    (not (at ?obj ?room)) 
+		    (not (free ?gripper))))
+
+
+   (:action drop
+       :parameters  (?obj ?room ?gripper)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+			    (carry ?obj ?gripper) (at-robby ?room))
+       :effect (and (at ?obj ?room)
+		    (free ?gripper)
+		    (not (carry ?obj ?gripper)))))"""
+
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    assert len(types) == 1
+    t = next(iter(types))
+    assert t.name == "object"
+    assert len(predicates) == 7
+    assert len(operators) == 3
+
+    problem_str = """
+(define (problem strips-gripper-x-1)
+   (:domain gripper)
+   (:objects rooma roomb ball4 ball3 ball2 ball1 left right)
+   (:init (room rooma)
+          (room roomb)
+          (ball ball4)
+          (ball ball3)
+          (ball ball2)
+          (ball ball1)
+          (at-robby rooma)
+          (free left)
+          (free right)
+          (at ball4 rooma)
+          (at ball3 rooma)
+          (at ball2 rooma)
+          (at ball1 rooma)
+          (gripper left)
+          (gripper right))
+   (:goal (and (at ball4 roomb)
+               (at ball3 roomb)
+               (at ball2 roomb)
+               (at ball1 roomb))))"""
+
+    task = utils.pddl_problem_str_to_task(problem_str, domain_str, types,
+                                          predicates)
+    assert len(task.objects) == 8
+    assert len(task.init) == 15
+    assert len(task.goal) == 4
+
+    # Test parsing a domain that has the "object" type.
+    domain_str = """(define (domain gripper)
+    (:requirements :strips :typing)
+    (:types object)
+   (:predicates (room ?r - object)
+		(ball ?b - object)
+		(gripper ?g - object)
+		(at-robby ?r - object)
+		(at ?b - object ?r - object)
+		(free ?g - object)
+		(carry ?o - object ?g - object))
+
+   (:action move
+       :parameters  (?from - object ?to - object)
+       :precondition (and  (room ?from) (room ?to) (at-robby ?from))
+       :effect (and  (at-robby ?to)
+		     (not (at-robby ?from))))
+
+   (:action pick
+       :parameters (?obj - object ?room - object ?gripper - object)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+			    (at ?obj ?room) (at-robby ?room) (free ?gripper))
+       :effect (and (carry ?obj ?gripper)
+		    (not (at ?obj ?room)) 
+		    (not (free ?gripper))))
+
+
+   (:action drop
+       :parameters  (?obj - object ?room - object ?gripper - object)
+       :precondition  (and  (ball ?obj) (room ?room) (gripper ?gripper)
+			    (carry ?obj ?gripper) (at-robby ?room))
+       :effect (and (at ?obj ?room)
+		    (free ?gripper)
+		    (not (carry ?obj ?gripper)))))"""
+
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    assert len(types) == 1
+    t = next(iter(types))
+    assert t.name == "object"
+    assert len(predicates) == 7
+    assert len(operators) == 3
+
+    problem_str = """
+(define (problem strips-gripper-x-1)
+   (:domain gripper)
+   (:objects rooma roomb ball4 ball3 ball2 ball1 left right - object)
+   (:init (room rooma)
+          (room roomb)
+          (ball ball4)
+          (ball ball3)
+          (ball ball2)
+          (ball ball1)
+          (at-robby rooma)
+          (free left)
+          (free right)
+          (at ball4 rooma)
+          (at ball3 rooma)
+          (at ball2 rooma)
+          (at ball1 rooma)
+          (gripper left)
+          (gripper right))
+   (:goal (and (at ball4 roomb)
+               (at ball3 roomb)
+               (at ball2 roomb)
+               (at ball1 roomb))))"""
+
+    task = utils.pddl_problem_str_to_task(problem_str, domain_str, types,
+                                          predicates)
+    assert len(task.objects) == 8
+    assert len(task.init) == 15
+    assert len(task.goal) == 4
