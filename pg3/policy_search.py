@@ -56,7 +56,8 @@ def _run_policy_search(predicates: Set[Predicate],
                        task_planning_heuristic: str = "lmcut",
                        max_policy_guided_rollout: int = 50,
                        gbfs_max_expansions: int = 100,
-                       hc_enforced_depth: int = 0) -> LiftedDecisionList:
+                       hc_enforced_depth: int = 0,
+                       allow_new_vars: bool = True) -> LiftedDecisionList:
     """Search for a lifted decision list policy that solves the training
     tasks."""
     # Set up a search over LDL space.
@@ -66,7 +67,8 @@ def _run_policy_search(predicates: Set[Predicate],
     _A: TypeAlias = Tuple[_PG3SearchOperator, int]
 
     # Create the PG3 search operators.
-    search_operators = _create_search_operators(predicates, operators)
+    search_operators = _create_search_operators(predicates, operators,
+                                                allow_new_vars)
 
     # The heuristic is what distinguishes PG3 from baseline approaches.
     heuristic = _create_heuristic(heuristic_name, predicates, operators,
@@ -115,12 +117,16 @@ def _run_policy_search(predicates: Set[Predicate],
 
 def _create_search_operators(
         predicates: Set[Predicate],
-        operators: Set[STRIPSOperator]) -> List[_PG3SearchOperator]:
+        operators: Set[STRIPSOperator],
+        allow_new_vars: bool = True) -> List[_PG3SearchOperator]:
     search_operator_classes = [
         _AddRulePG3SearchOperator,
         _AddConditionPG3SearchOperator,
     ]
-    return [cls(predicates, operators) for cls in search_operator_classes]
+    return [
+        cls(predicates, operators, allow_new_vars)
+        for cls in search_operator_classes
+    ]
 
 
 def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],

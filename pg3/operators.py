@@ -13,10 +13,13 @@ from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
 class _PG3SearchOperator(abc.ABC):
     """Given an LDL policy, generate zero or more successor LDL policies."""
 
-    def __init__(self, predicates: Set[Predicate],
-                 operators: Set[STRIPSOperator]) -> None:
+    def __init__(self,
+                 predicates: Set[Predicate],
+                 operators: Set[STRIPSOperator],
+                 allow_new_vars: bool = True) -> None:
         self._predicates = predicates
         self._operators = operators
+        self._allow_new_vars = allow_new_vars
 
     @abc.abstractmethod
     def get_successors(
@@ -108,10 +111,11 @@ class _AddConditionPG3SearchOperator(_PG3SearchOperator):
             self, variables: FrozenSet[Variable]) -> List[LiftedAtom]:
         conditions = []
         for pred in sorted(self._predicates):
-            new_vars = utils.create_new_variables(pred.types, variables)
-            condition_vars = variables | frozenset(new_vars)
-            # Uncomment to disallow creation of fresh variables.
-            # condition_vars = variables
+            # Allow or disallow creation of fresh variables.
+            condition_vars = variables
+            if self._allow_new_vars:
+                new_vars = utils.create_new_variables(pred.types, variables)
+                condition_vars |= frozenset(new_vars)
             for condition in utils.get_all_lifted_atoms_for_predicate(
                     pred, condition_vars):
                 conditions.append(condition)
