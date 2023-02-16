@@ -44,7 +44,8 @@ def learn_policy(domain_str: str,
                              horizon, demos, max_rule_params, heuristic_name,
                              search_method, task_planning_heuristic,
                              max_policy_guided_rollout, gbfs_max_expansions,
-                             hc_enforced_depth, allow_new_vars, initial_policy_strs)
+                             hc_enforced_depth, allow_new_vars,
+                             initial_policy_strs)
     return str(ldl)
 
 
