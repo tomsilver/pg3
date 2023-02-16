@@ -8,7 +8,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, Hashable, Iterator, List, \
-    Optional, Tuple, TypeVar, cast
+    Optional, Sequence, Tuple, TypeVar, cast
 
 import pathos.multiprocessing as mp
 
@@ -26,7 +26,7 @@ class _HeuristicSearchNode(Generic[_S, _A]):
 
 
 def _run_heuristic_search(
-        initial_state: _S,
+        initial_states: Sequence[_S],
         check_goal: Callable[[_S], bool],
         get_successors: Callable[[_S], Iterator[Tuple[_A, _S, float]]],
         get_priority: Callable[[_HeuristicSearchNode[_S, _A]], Any],
@@ -39,20 +39,27 @@ def _run_heuristic_search(
     Depending on get_priority, can implement A*, GBFS, or UCS. If no
     goal is found, returns the state with the best priority.
     """
+    start_time = time.perf_counter()
+
     queue: List[Tuple[Any, int, _HeuristicSearchNode[_S, _A]]] = []
     state_to_best_path_cost: Dict[_S, float] = \
         defaultdict(lambda : float("inf"))
 
-    root_node: _HeuristicSearchNode[_S, _A] = _HeuristicSearchNode(
-        initial_state, 0, 0)
-    root_priority = get_priority(root_node)
-    best_node = root_node
-    best_node_priority = root_priority
+    best_node: Optional[_HeuristicSearchNode[_S, _A]] = None
+    best_node_priority = float("inf")
     tiebreak = itertools.count()
-    hq.heappush(queue, (root_priority, next(tiebreak), root_node))
     num_expansions = 0
-    num_evals = 1
-    start_time = time.perf_counter()
+    num_evals = 0
+    for initial_state in initial_states:
+        root_node: _HeuristicSearchNode[_S, _A] = _HeuristicSearchNode(
+            initial_state, 0, 0)
+        root_priority = get_priority(root_node)
+        if best_node is None or root_priority < best_node_priority:
+            best_node = root_node
+            best_node_priority = root_priority
+        hq.heappush(queue, (root_priority, next(tiebreak), root_node))
+        num_evals += 1
+    assert best_node is not None
 
     while len(queue) > 0 and time.perf_counter() - start_time < timeout and \
           num_expansions < max_expansions and num_evals < max_evals:
@@ -114,7 +121,7 @@ def _finish_plan(
     return rev_state_sequence[::-1], rev_action_sequence[::-1]
 
 
-def run_gbfs(initial_state: _S,
+def run_gbfs(initial_states: Sequence[_S],
              check_goal: Callable[[_S], bool],
              get_successors: Callable[[_S], Iterator[Tuple[_A, _S, float]]],
              heuristic: Callable[[_S], float],
@@ -124,12 +131,12 @@ def run_gbfs(initial_state: _S,
              lazy_expansion: bool = False) -> Tuple[List[_S], List[_A]]:
     """Greedy best-first search."""
     get_priority = lambda n: heuristic(n.state)
-    return _run_heuristic_search(initial_state, check_goal, get_successors,
+    return _run_heuristic_search(initial_states, check_goal, get_successors,
                                  get_priority, max_expansions, max_evals,
                                  timeout, lazy_expansion)
 
 
-def run_astar(initial_state: _S,
+def run_astar(initial_states: Sequence[_S],
               check_goal: Callable[[_S], bool],
               get_successors: Callable[[_S], Iterator[Tuple[_A, _S, float]]],
               heuristic: Callable[[_S], float],
@@ -139,13 +146,13 @@ def run_astar(initial_state: _S,
               lazy_expansion: bool = False) -> Tuple[List[_S], List[_A]]:
     """A* search."""
     get_priority = lambda n: heuristic(n.state) + n.cumulative_cost
-    return _run_heuristic_search(initial_state, check_goal, get_successors,
+    return _run_heuristic_search(initial_states, check_goal, get_successors,
                                  get_priority, max_expansions, max_evals,
                                  timeout, lazy_expansion)
 
 
 def run_hill_climbing(
-        initial_state: _S,
+        initial_states: Sequence[_S],
         check_goal: Callable[[_S], bool],
         get_successors: Callable[[_S], Iterator[Tuple[_A, _S, float]]],
         heuristic: Callable[[_S], float],
@@ -163,11 +170,21 @@ def run_hill_climbing(
     Lower heuristic is better.
     """
     assert enforced_depth >= 0
-    cur_node: _HeuristicSearchNode[_S, _A] = _HeuristicSearchNode(
-        initial_state, 0, 0)
-    last_heuristic = heuristic(cur_node.state)
+    # Start with the best initial state.
+    cur_node: Optional[_HeuristicSearchNode[_S, _A]] = None
+    visited = set()
+    best_heuristic = float("inf")
+    for initial_state in initial_states:
+        root_node: _HeuristicSearchNode[_S, _A] = _HeuristicSearchNode(
+            initial_state, 0, 0)
+        root_heuristic = heuristic(initial_state)
+        if cur_node is None or root_heuristic < best_heuristic:
+            cur_node = root_node
+            best_heuristic = root_heuristic
+        visited.add(initial_state)
+    last_heuristic = best_heuristic
     heuristics = [last_heuristic]
-    visited = {initial_state}
+    assert cur_node is not None
     logging.info(f"\n\nStarting hill climbing at state {cur_node.state} "
                  f"with heuristic {last_heuristic}")
     while True:
@@ -244,7 +261,7 @@ def run_hill_climbing(
 
 
 def run_policy_guided_astar(
-        initial_state: _S,
+        initial_states: Sequence[_S],
         check_goal: Callable[[_S], bool],
         get_valid_actions: Callable[[_S], Iterator[Tuple[_A, float]]],
         get_next_state: Callable[[_S, _A], _S],
@@ -292,19 +309,19 @@ def run_policy_guided_astar(
             next_state = get_next_state(state, action)
             yield ([action], next_state, cost)
 
-    _, action_subseqs = run_astar(initial_state=initial_state,
-                                  check_goal=check_goal,
-                                  get_successors=get_successors,
-                                  heuristic=heuristic,
-                                  max_expansions=max_expansions,
-                                  max_evals=max_evals,
-                                  timeout=timeout,
-                                  lazy_expansion=lazy_expansion)
+    jumpy_states, action_subseqs = run_astar(initial_states=initial_states,
+                                             check_goal=check_goal,
+                                             get_successors=get_successors,
+                                             heuristic=heuristic,
+                                             max_expansions=max_expansions,
+                                             max_evals=max_evals,
+                                             timeout=timeout,
+                                             lazy_expansion=lazy_expansion)
 
     # The states are "jumpy", so we need to reconstruct the dense state
     # sequence from the action subsequences. We also need to construct a
     # flat action sequence.
-    state = initial_state
+    state = jumpy_states[0]
     state_seq = [state]
     action_seq = []
     for action_subseq in action_subseqs:
