@@ -26,6 +26,7 @@ def learn_policy(domain_str: str,
                  max_policy_guided_rollout: int = 50,
                  gbfs_max_expansions: int = 100,
                  hc_enforced_depth: int = 0,
+                 allow_new_vars: bool = True,
                  initial_policy_strs: Optional[List[str]] = None) -> str:
     """Outputs a string representation of a lifted decision list."""
     if demos is not None:
@@ -43,7 +44,8 @@ def learn_policy(domain_str: str,
                              horizon, demos, max_rule_params, heuristic_name,
                              search_method, task_planning_heuristic,
                              max_policy_guided_rollout, gbfs_max_expansions,
-                             hc_enforced_depth, initial_policy_strs)
+                             hc_enforced_depth, allow_new_vars,
+                             initial_policy_strs)
     return str(ldl)
 
 
@@ -61,6 +63,7 @@ def _run_policy_search(
         max_policy_guided_rollout: int = 50,
         gbfs_max_expansions: int = 100,
         hc_enforced_depth: int = 0,
+        allow_new_vars: bool = True,
         initial_policy_strs: Optional[List[str]] = None) -> LiftedDecisionList:
     """Search for a lifted decision list policy that solves the training
     tasks."""
@@ -71,7 +74,8 @@ def _run_policy_search(
     _A: TypeAlias = Tuple[_PG3SearchOperator, int]
 
     # Create the PG3 search operators.
-    search_operators = _create_search_operators(predicates, operators)
+    search_operators = _create_search_operators(predicates, operators,
+                                                allow_new_vars)
 
     # The heuristic is what distinguishes PG3 from baseline approaches.
     heuristic = _create_heuristic(heuristic_name, predicates, operators,
@@ -126,12 +130,16 @@ def _run_policy_search(
 
 def _create_search_operators(
         predicates: Set[Predicate],
-        operators: Set[STRIPSOperator]) -> List[_PG3SearchOperator]:
+        operators: Set[STRIPSOperator],
+        allow_new_vars: bool = True) -> List[_PG3SearchOperator]:
     search_operator_classes = [
         _AddRulePG3SearchOperator,
         _AddConditionPG3SearchOperator,
     ]
-    return [cls(predicates, operators) for cls in search_operator_classes]
+    return [
+        cls(predicates, operators, allow_new_vars)
+        for cls in search_operator_classes
+    ]
 
 
 def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],
