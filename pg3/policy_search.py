@@ -11,7 +11,8 @@ from pg3.heuristics import _DemoPlanComparisonPG3Heuristic, _PG3Heuristic, \
 from pg3.operators import _AddConditionPG3SearchOperator, \
     _AddRulePG3SearchOperator, _PG3SearchOperator
 from pg3.search import run_gbfs, run_hill_climbing
-from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task
+from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task, \
+    Type
 
 
 def learn_policy(domain_str: str,
@@ -24,7 +25,9 @@ def learn_policy(domain_str: str,
                  task_planning_heuristic: str = "lmcut",
                  max_policy_guided_rollout: int = 50,
                  gbfs_max_expansions: int = 100,
-                 hc_enforced_depth: int = 0) -> str:
+                 hc_enforced_depth: int = 0,
+                 allow_new_vars: bool = True,
+                 initial_policy_strs: Optional[List[str]] = None) -> str:
     """Outputs a string representation of a lifted decision list."""
     if demos is not None:
         assert len(demos) == len(problem_strs), "Supply one demo per problem."
@@ -37,27 +40,30 @@ def learn_policy(domain_str: str,
                                        predicates)
         for problem_str in problem_strs
     ]
-    ldl = _run_policy_search(predicates, operators, train_tasks, horizon,
-                             demos, max_rule_params, heuristic_name,
+    ldl = _run_policy_search(types, predicates, operators, train_tasks,
+                             horizon, demos, max_rule_params, heuristic_name,
                              search_method, task_planning_heuristic,
                              max_policy_guided_rollout, gbfs_max_expansions,
-                             hc_enforced_depth)
+                             hc_enforced_depth, allow_new_vars, initial_policy_strs)
     return str(ldl)
 
 
-def _run_policy_search(predicates: Set[Predicate],
-                       operators: Set[STRIPSOperator],
-                       train_tasks: Sequence[Task],
-                       horizon: int,
-                       demos: Optional[List[List[str]]] = None,
-                       max_rule_params: int = 8,
-                       heuristic_name: str = "policy_guided",
-                       search_method: str = "hill_climbing",
-                       task_planning_heuristic: str = "lmcut",
-                       max_policy_guided_rollout: int = 50,
-                       gbfs_max_expansions: int = 100,
-                       hc_enforced_depth: int = 0,
-                       allow_new_vars: bool = True) -> LiftedDecisionList:
+def _run_policy_search(
+        types: Set[Type],
+        predicates: Set[Predicate],
+        operators: Set[STRIPSOperator],
+        train_tasks: Sequence[Task],
+        horizon: int,
+        demos: Optional[List[List[str]]] = None,
+        max_rule_params: int = 8,
+        heuristic_name: str = "policy_guided",
+        search_method: str = "hill_climbing",
+        task_planning_heuristic: str = "lmcut",
+        max_policy_guided_rollout: int = 50,
+        gbfs_max_expansions: int = 100,
+        hc_enforced_depth: int = 0,
+        allow_new_vars: bool = True,
+        initial_policy_strs: Optional[List[str]] = None) -> LiftedDecisionList:
     """Search for a lifted decision list policy that solves the training
     tasks."""
     # Set up a search over LDL space.
@@ -77,7 +83,13 @@ def _run_policy_search(predicates: Set[Predicate],
                                   max_policy_guided_rollout)
 
     # Initialize the search with an empty list.
-    initial_state = LiftedDecisionList([])
+    if initial_policy_strs is None:
+        initial_states = [LiftedDecisionList([])]
+    else:
+        initial_states = [
+            utils.parse_ldl_from_str(l, types, predicates, operators)
+            for l in initial_policy_strs
+        ]
 
     def get_successors(ldl: _S) -> Iterator[Tuple[_A, _S, float]]:
         for op in search_operators:
@@ -90,7 +102,7 @@ def _run_policy_search(predicates: Set[Predicate],
 
     if search_method == "gbfs":
         # Terminate only after max expansions.
-        path, _ = run_gbfs(initial_state=initial_state,
+        path, _ = run_gbfs(initial_states=initial_states,
                            check_goal=lambda _: False,
                            get_successors=get_successors,
                            heuristic=heuristic,
@@ -99,7 +111,7 @@ def _run_policy_search(predicates: Set[Predicate],
 
     elif search_method == "hill_climbing":
         # Terminate when no improvement is found.
-        path, _, _ = run_hill_climbing(initial_state=initial_state,
+        path, _, _ = run_hill_climbing(initial_states=initial_states,
                                        check_goal=lambda _: False,
                                        get_successors=get_successors,
                                        heuristic=heuristic,

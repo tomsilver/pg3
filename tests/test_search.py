@@ -51,7 +51,7 @@ def test_run_gbfs():
         return float(abs(state[0] - 4) + abs(state[1] - 4))
 
     initial_state = (0, 0)
-    state_sequence, action_sequence = run_gbfs(initial_state,
+    state_sequence, action_sequence = run_gbfs([initial_state],
                                                _grid_check_goal_fn,
                                                _grid_successor_fn,
                                                _grid_heuristic_fn)
@@ -62,7 +62,8 @@ def test_run_gbfs():
     ]
 
     # Same, but actually reaching the goal is impossible.
-    state_sequence, action_sequence = run_gbfs(initial_state, lambda s: False,
+    state_sequence, action_sequence = run_gbfs([initial_state],
+                                               lambda s: False,
                                                _grid_successor_fn,
                                                _grid_heuristic_fn)
     assert state_sequence == [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (4, 1),
@@ -70,6 +71,15 @@ def test_run_gbfs():
     assert action_sequence == [
         'down', 'down', 'down', 'down', 'right', 'right', 'right', 'right'
     ]
+
+    # Test with multiple initial states.
+    initial_state2 = (4, 3)
+    state_sequence, action_sequence = run_gbfs([initial_state, initial_state2],
+                                               _grid_check_goal_fn,
+                                               _grid_successor_fn,
+                                               _grid_heuristic_fn)
+    assert state_sequence == [(4, 3), (4, 4)]
+    assert action_sequence == ['right']
 
     # Test with an infinite branching factor.
     def _inf_grid_successor_fn(state: S) -> Iterator[Tuple[A, S, float]]:
@@ -84,7 +94,7 @@ def test_run_gbfs():
             yield (action, state, 100.)
             i += 1
 
-    state_sequence, action_sequence = run_gbfs(initial_state,
+    state_sequence, action_sequence = run_gbfs([initial_state],
                                                _grid_check_goal_fn,
                                                _inf_grid_successor_fn,
                                                _grid_heuristic_fn,
@@ -96,7 +106,7 @@ def test_run_gbfs():
     ]
     # Test limit on max evals.
     state_sequence, action_sequence = run_gbfs(
-        initial_state,
+        [initial_state],
         _grid_check_goal_fn,
         _inf_grid_successor_fn,
         _grid_heuristic_fn,
@@ -108,7 +118,7 @@ def test_run_gbfs():
     # We don't care about the return value. Since the goal check always
     # returns False, the fact that this test doesn't hang means that
     # the timeout is working correctly.
-    run_gbfs(initial_state,
+    run_gbfs([initial_state],
              lambda s: False,
              _inf_grid_successor_fn,
              _grid_heuristic_fn,
@@ -158,7 +168,7 @@ def test_run_astar():
         return float(abs(state[0] - 4) + abs(state[1] - 4))
 
     initial_state = (0, 0)
-    state_sequence, action_sequence = run_astar(initial_state,
+    state_sequence, action_sequence = run_astar([initial_state],
                                                 _grid_check_goal_fn,
                                                 _grid_successor_fn,
                                                 _grid_heuristic_fn)
@@ -214,7 +224,7 @@ def test_run_hill_climbing():
 
     initial_state = (0, 0)
     state_sequence, action_sequence, heuristics = run_hill_climbing(
-        initial_state, _grid_check_goal_fn, _grid_successor_fn,
+        [initial_state], _grid_check_goal_fn, _grid_successor_fn,
         _grid_heuristic_fn)
     assert state_sequence == [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (4, 1),
                               (4, 2), (4, 3), (4, 4)]
@@ -224,21 +234,33 @@ def test_run_hill_climbing():
     assert heuristics == [8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0]
 
     # Same, but actually reaching the goal is impossible.
-    state_sequence, action_sequence, _ = run_hill_climbing(
-        initial_state, lambda s: False, _grid_successor_fn, _grid_heuristic_fn)
+    state_sequence, action_sequence, _ = run_hill_climbing([initial_state],
+                                                           lambda s: False,
+                                                           _grid_successor_fn,
+                                                           _grid_heuristic_fn)
     assert state_sequence == [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (4, 1),
                               (4, 2), (4, 3), (4, 4)]
     assert action_sequence == [
         "down", "down", "down", "down", "right", "right", "right", "right"
     ]
 
+    # Test with multiple initial states.
+    initial_state2 = (4, 3)
+    state_sequence, action_sequence, _ = run_hill_climbing(
+        [initial_state, initial_state2], _grid_check_goal_fn,
+        _grid_successor_fn, _grid_heuristic_fn)
+    assert state_sequence == [(4, 3), (4, 4)]
+    assert action_sequence == ['right']
+
     # Search with no successors
     def _no_successor_fn(state: S) -> Iterator[Tuple[A, S, float]]:
         if state == initial_state:
             yield "dummy_action", (2, 2), 1.0
 
-    state_sequence, action_sequence, _ = run_hill_climbing(
-        initial_state, lambda s: False, _no_successor_fn, _grid_heuristic_fn)
+    state_sequence, action_sequence, _ = run_hill_climbing([initial_state],
+                                                           lambda s: False,
+                                                           _no_successor_fn,
+                                                           _grid_heuristic_fn)
     assert state_sequence == [(0, 0), (2, 2)]
     assert action_sequence == ["dummy_action"]
 
@@ -252,7 +274,7 @@ def test_run_hill_climbing():
     for parallelize in (False, True):
         # With enforced_depth 0, search fails.
         state_sequence, action_sequence, heuristics = run_hill_climbing(
-            initial_state,
+            [initial_state],
             _grid_check_goal_fn,
             _grid_successor_fn,
             _local_minimum_grid_heuristic_fn,
@@ -263,7 +285,7 @@ def test_run_hill_climbing():
 
         # With enforced_depth 1, search succeeds.
         state_sequence, action_sequence, heuristics = run_hill_climbing(
-            initial_state,
+            [initial_state],
             _grid_check_goal_fn,
             _grid_successor_fn,
             _local_minimum_grid_heuristic_fn,
@@ -282,7 +304,7 @@ def test_run_hill_climbing():
     # Test early_termination_heuristic_thresh with very high value.
     initial_state = (0, 0)
     state_sequence, action_sequence, heuristics = run_hill_climbing(
-        initial_state,
+        [initial_state],
         _grid_check_goal_fn,
         _grid_successor_fn,
         _grid_heuristic_fn,
@@ -351,7 +373,7 @@ def test_run_policy_guided_astar():
     # The policy should bias toward the path that moves all the way right, then
     # planning should move all the way down to reach the goal.
     state_sequence, action_sequence = run_policy_guided_astar(
-        initial_state,
+        [initial_state],
         _grid_check_goal_fn,
         _get_valid_actions,
         _get_next_state,
@@ -368,7 +390,7 @@ def test_run_policy_guided_astar():
 
     # With a trivial policy, should find the optimal path.
     state_sequence, action_sequence = run_policy_guided_astar(
-        initial_state,
+        [initial_state],
         _grid_check_goal_fn,
         _get_valid_actions,
         _get_next_state,
@@ -387,7 +409,7 @@ def test_run_policy_guided_astar():
     # With a policy that outputs invalid actions, should ignore the policy
     # and find the optimal path.
     state_sequence, action_sequence = run_policy_guided_astar(
-        initial_state,
+        [initial_state],
         _grid_check_goal_fn,
         _get_valid_actions,
         _get_next_state,

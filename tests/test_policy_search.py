@@ -226,3 +226,34 @@ def test_learn_policy():
                               max_rule_params=0,
                               heuristic_name="demo_plan_comparison")
     assert policy_str == """(define (policy)\n  \n)"""
+
+    # Test learning from initialization.
+    policy_str1 = """(define (policy)\n  \n)"""
+    policy_str2 = """(define (policy)
+  (:rule pick-up
+    :parameters (?loc - loc ?paper - paper)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals ()
+    :action (pick-up ?paper ?loc)
+  )
+  (:rule deliver
+    :parameters (?loc - loc ?paper - paper)
+    :preconditions (and (at ?loc) (carrying ?paper) (wantspaper ?loc))
+    :goals ()
+    :action (deliver ?paper ?loc)
+  )
+  (:rule move
+    :parameters (?from - loc ?to - loc)
+    :preconditions (and (at ?from) (safe ?from) (wantspaper ?to))
+    :goals ()
+    :action (move ?from ?to)
+  )
+)"""
+
+    policy_str = learn_policy(domain_str,
+                              problem_strs,
+                              horizon=50,
+                              search_method="gbfs",
+                              gbfs_max_expansions=0,
+                              initial_policy_strs=[policy_str1, policy_str2])
+    assert policy_str == policy_str2
