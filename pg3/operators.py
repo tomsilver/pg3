@@ -4,11 +4,11 @@ from __future__ import annotations
 import abc
 from collections import defaultdict
 import functools
-from typing import Callable, FrozenSet, Iterator, List, Set
+from typing import Callable, ClassVar, FrozenSet, Iterator, List, Set
 
 from pg3 import utils
 from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
-    STRIPSOperator, Variable, Trajectory, GroundAtom, _GroundSTRIPSOperator
+    STRIPSOperator, Variable, Trajectory, GroundAtom, _GroundSTRIPSOperator, _GroundMacro
 
 
 class _PG3SearchOperator(abc.ABC):
@@ -181,52 +181,58 @@ class _DeleteRulePG3SearchOperator(_PG3SearchOperator):
 class _BottomUpPG3SearchOperator(_PG3SearchOperator):
     """An operator that uses plans to suggest a single new LDL."""
 
+    max_macro_length: ClassVar[int] = 1
+
     def get_successors(
         self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
 
-        # Generate plan examples using this LDL (or using demonstrations).
+        # Generate macro examples using this LDL (or using demonstrations).
         examples = []
         all_seen_atoms = set()
         for action_seq, atom_seq, task in self._generate_plan_examples(ldl):
             assert len(atom_seq) == len(action_seq) + 1
-            for t, (atoms, action) in enumerate(zip(atom_seq, action_seq)):
-                # Store step so that we can later go back to front.
-                examples.append((t, atoms, action, task))
-                all_seen_atoms.update(atoms)
+            all_seen_atoms.update({a for atoms in atom_seq for a in atoms})
+            for l in range(self.max_macro_length+1):
+                for t in range(len(action_seq) - l):
+                    # Priority: higher is better.
+                    priority = (t, l)
+                    atoms = atom_seq[t]
+                    ground_macro = _GroundMacro(action_seq[t:(t+l+1)])
+                    examples.append((priority, atoms, ground_macro, task))
 
-        # Collect all uncovered transitions, organized by (lifted) action.
-        op_to_uncovered = defaultdict(list)
-        max_uncovered_t = -1
-        op_with_max_uncovered_t = None
+        # Collect all uncovered transitions, organized by (lifted) macro.
+        macro_to_uncovered = defaultdict(list)
+        best_priority = None
+        selected_macro = None
         for example in examples:
-            t, atoms, action, task = example
+            priority, atoms, ground_macro, task = example
+            plan_action = ground_macro.ground_operators[0]
             ldl_action = utils.query_ldl(ldl, atoms, task.objects, task.goal)
-            if ldl_action is None or ldl_action != action:
-                op_to_uncovered[action.parent].append(example)
-                if t > max_uncovered_t:
-                    max_uncovered_t = t
-                    op_with_max_uncovered_t = action.parent
+            if ldl_action is None or ldl_action != plan_action:
+                macro_to_uncovered[ground_macro.parent].append(example)
+                if best_priority is None or priority > best_priority:
+                    best_priority = priority
+                    selected_macro = ground_macro.parent
 
         # No uncovered transitions found, policy is perfect.
-        if max_uncovered_t == -1:
+        if selected_macro is None:
             return
-        assert op_with_max_uncovered_t is not None
 
-        # Select an action to create a rule for, back to front.
-        uncovered_op_examples = op_to_uncovered[op_with_max_uncovered_t]
-        print(f"Found {len(uncovered_op_examples)} uncovered examples for {op_with_max_uncovered_t.name}")
+        # Select a macro to create a rule for, back to front.
+        uncovered_macro_examples = macro_to_uncovered[selected_macro]
+        print(f"Found {len(uncovered_macro_examples)} uncovered examples for {selected_macro}")
 
         # Perform a lifted intersection of positive, negative, and goal
         # preconditions to create a new rule.
-        operator = op_with_max_uncovered_t
-        parameters = operator.parameters
+        operator = selected_macro.operators[0]
+        parameters = selected_macro.parameters
         pos_state_preconditions = None
         neg_state_preconditions = None
         goal_preconditions = None
 
-        for _, atoms, action, task in uncovered_op_examples:
-            # For now, just lift using the action parameters.
-            sub = {o: v for o, v in zip(action.objects, parameters)}
+        for _, atoms, ground_macro, task in uncovered_macro_examples:
+            # Create a substitution from objects to parameters.
+            sub = ground_macro.get_lift_mapping()
             # Lift positives.
             lifted_pos = {a.lift(sub) for a in atoms if all(o in sub for o in a.objects)}
             # Lift negatives.
@@ -246,6 +252,17 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
                 pos_state_preconditions &= lifted_pos
                 neg_state_preconditions &= lifted_neg
                 goal_preconditions &= lifted_goal
+
+        # Remap variables to operator parameters to deal with annoying
+        # assumption that the operator and LDL parameters are aligned.
+        var_sub = {v: k for k, v in selected_macro.parameter_subs[0].items()}
+        for missing_param in parameters:
+            if missing_param not in var_sub:
+                var_sub[missing_param] = missing_param
+        parameters = [var_sub[v] for v in parameters]
+        pos_state_preconditions = {a.substitute(var_sub) for a in pos_state_preconditions}
+        neg_state_preconditions = {a.substitute(var_sub) for a in neg_state_preconditions}
+        goal_preconditions = {a.substitute(var_sub) for a in goal_preconditions}
 
         # Always include the preconditions of the operator.
         pos_state_preconditions |= operator.preconditions

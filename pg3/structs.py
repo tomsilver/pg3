@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from typing import Dict, List, Optional, Sequence, Set, Tuple, TypeVar, cast
+from itertools import count
 
 
 @dataclass(frozen=True, order=True)
@@ -171,6 +172,11 @@ class LiftedAtom(_Atom):
         assert set(self.variables).issubset(set(sub.keys()))
         return GroundAtom(self.predicate, [sub[v] for v in self.variables])
 
+    def substitute(self, sub: VarToVarSub) -> GroundAtom:
+        """Create a GroundAtom with a given substitution."""
+        assert set(self.variables).issubset(set(sub.keys()))
+        return LiftedAtom(self.predicate, [sub[v] for v in self.variables])
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class GroundAtom(_Atom):
@@ -311,6 +317,117 @@ class _GroundSTRIPSOperator:
 
     def __gt__(self, other: object) -> bool:
         assert isinstance(other, _GroundSTRIPSOperator)
+        return str(self) > str(other)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class Macro:
+    operators: Sequence[STRIPSOperator]
+    parameter_subs: Sequence[Dict[Variable, Variable]]
+
+    @cached_property
+    def parameters(self) -> List[Variable]:
+        return sorted({v for s in self.parameter_subs for v in s.values()})
+
+    @cached_property
+    def _str(self) -> str:
+        member_strs = []
+        for op, sub in zip(self.operators, self.parameter_subs):
+            arg_str = ", ".join([sub[o].name for o in op.parameters])
+            op_str = f"{op.name}({arg_str})"
+            member_strs.append(op_str)
+        members_str = ", ".join(member_strs)
+        return f"Macro[{members_str}]"
+
+    @cached_property
+    def _hash(self) -> int:
+        return hash(str(self))
+
+    def __str__(self) -> str:
+        return self._str
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) == str(other)
+
+    def __lt__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) < str(other)
+
+    def __gt__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) > str(other)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class _GroundMacro:
+    ground_operators: Sequence[_GroundSTRIPSOperator]
+
+    @cached_property
+    def parent(self) -> Macro:
+        """Generate the parent macro of this ground macro."""
+        operators = [o.parent for o in self.ground_operators]
+        parameter_subs = []
+        obj_to_var = self.get_lift_mapping()
+        for op in self.ground_operators:
+            parent_vars = [obj_to_var[o] for o in op.objects]
+            op_sub = dict(zip(op.parent.parameters, parent_vars))
+            parameter_subs.append(op_sub)
+        macro = Macro(operators, parameter_subs)
+        return macro
+
+    def get_lift_mapping(self) -> ObjToVarSub:
+        """Map objects in the ground macro to variables."""
+        obj_sub = {}
+        var_counter = count()
+        for op in self.ground_operators:
+            op_sub = {}
+            for obj, param in zip(op.objects, op.parent.parameters):
+                if obj not in obj_sub:
+                    new_var = Variable(f"?x{next(var_counter)}", obj.type)
+                    obj_sub[obj] = new_var
+        return obj_sub
+
+
+    @cached_property
+    def _str(self) -> str:
+        member_strs = []
+        for op in self.ground_operators:
+            arg_str = ", ".join([o.name for o in op.objects])
+            op_str = f"{op.name}({arg_str})"
+            member_strs.append(op_str)
+        members_str = ", ".join(member_strs)
+        return f"Macro[{members_str}]"
+
+    @cached_property
+    def _hash(self) -> int:
+        return hash(str(self))
+
+    def __str__(self) -> str:
+        return self._str
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
+        return str(self) == str(other)
+
+    def __lt__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
+        return str(self) < str(other)
+
+    def __gt__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
         return str(self) > str(other)
 
 
@@ -506,5 +623,6 @@ class LiftedDecisionList:
 
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
+VarToVarSub = Dict[Variable, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
 Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]], Task]
