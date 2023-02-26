@@ -1,9 +1,11 @@
 """Tests for heuristics.py."""
 
-from pg3.heuristics import _DemoPlanComparisonPG3Heuristic, \
-    _PolicyEvaluationPG3Heuristic, _PolicyGuidedPG3Heuristic
+from pg3.heuristics import _PlanComparisonPG3Heuristic, \
+    _PolicyEvaluationPG3Heuristic
 from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
     Object, Predicate, STRIPSOperator, Task, Type, Variable
+from pg3.trajectory_gen import _PolicyGuidedPlanningTrajectoryGenerator, \
+    _StaticPlanningTrajectoryGenerator
 
 
 def test_pg3_heuristics():
@@ -198,25 +200,32 @@ def test_pg3_heuristics():
     ]
 
     # The policy-guided heuristic should strictly decrease.
-    heuristic = _PolicyGuidedPG3Heuristic(preds, operators, train_tasks,
-                                          horizon)
+    traj_gen = _PolicyGuidedPlanningTrajectoryGenerator(preds, operators)
+    heuristic = _PlanComparisonPG3Heuristic(traj_gen, train_tasks, horizon)
     score_sequence = [heuristic(ldl) for ldl in policy_sequence]
     for i in range(len(score_sequence) - 1):
         assert score_sequence[i] > score_sequence[i + 1]
 
-    # The baseline score functions should decrease (not strictly).
-    for heuristic_cls in [
-            _PolicyEvaluationPG3Heuristic, _DemoPlanComparisonPG3Heuristic
-    ]:
-        heuristic = heuristic_cls(preds, operators, train_tasks, horizon)
-        score_sequence = [heuristic(ldl) for ldl in policy_sequence]
-        for i in range(len(score_sequence) - 1):
-            assert score_sequence[i] >= score_sequence[i + 1]
-
-    # Make sure heuristics don't crash when planning fails.
+    # Make sure doesn't crash when planning fails.
     ldl = policy_sequence[0]
-    for heuristic_cls in [
-            _PolicyGuidedPG3Heuristic, _DemoPlanComparisonPG3Heuristic
-    ]:
-        heuristic = heuristic_cls(preds, set(), train_tasks, horizon)
-        assert heuristic(ldl) > 0
+    traj_gen = _PolicyGuidedPlanningTrajectoryGenerator(preds, set())
+    heuristic = _PlanComparisonPG3Heuristic(traj_gen, train_tasks, horizon)
+    assert heuristic(ldl) > 0
+
+    # The baseline score functions should decrease (not strictly).
+    traj_gen = _StaticPlanningTrajectoryGenerator(preds, operators)
+    heuristic = _PlanComparisonPG3Heuristic(traj_gen, train_tasks, horizon)
+    score_sequence = [heuristic(ldl) for ldl in policy_sequence]
+    for i in range(len(score_sequence) - 1):
+        assert score_sequence[i] >= score_sequence[i + 1]
+
+    # Make sure doesn't crash when planning fails.
+    ldl = policy_sequence[0]
+    traj_gen = _StaticPlanningTrajectoryGenerator(preds, set())
+    heuristic = _PlanComparisonPG3Heuristic(traj_gen, train_tasks, horizon)
+    assert heuristic(ldl) > 0
+
+    heuristic = _PolicyEvaluationPG3Heuristic(traj_gen, train_tasks, horizon)
+    score_sequence = [heuristic(ldl) for ldl in policy_sequence]
+    for i in range(len(score_sequence) - 1):
+        assert score_sequence[i] >= score_sequence[i + 1]

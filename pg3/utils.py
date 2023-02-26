@@ -259,13 +259,13 @@ def all_ground_operators(operators: Collection[STRIPSOperator],
 @functools.lru_cache(maxsize=None)
 def _cached_all_ground_operators(operators: FrozenSet[STRIPSOperator],
                                  task: Task) -> List[_GroundSTRIPSOperator]:
-    all_ground_operators = set()
+    ground_operators = set()
     for operator in operators:
         types = [p.type for p in operator.parameters]
         for choice in get_object_combinations(task.objects, types):
             ground_op = operator.ground(tuple(choice))
-            all_ground_operators.add(ground_op)
-    return sorted(all_ground_operators)
+            ground_operators.add(ground_op)
+    return sorted(ground_operators)
 
 
 def get_static_atoms(ground_ops: Collection[_GroundSTRIPSOperator],

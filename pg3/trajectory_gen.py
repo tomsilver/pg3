@@ -1,7 +1,6 @@
 """Generate trajectories by planning or with demos."""
 
 import abc
-import functools
 from typing import Dict, FrozenSet, Iterator, List, Optional, Set, Tuple
 
 from typing_extensions import TypeAlias
@@ -37,22 +36,32 @@ class _TrajectoryGenerator(abc.ABC):
 class _StaticTrajectoryGenerator(_TrajectoryGenerator):
     """Generate trajectories once per training task and cache them."""
 
+    def __init__(self,
+                 predicates: Set[Predicate],
+                 operators: Set[STRIPSOperator],
+                 task_planning_heuristic: str = "lmcut",
+                 max_policy_guided_rollout: int = 50,
+                 user_supplied_demos: Optional[Dict[Task, List[str]]] = None):
+        super().__init__(predicates, operators, task_planning_heuristic,
+                         max_policy_guided_rollout, user_supplied_demos)
+        self._task_to_trajectory: Dict[Task, Trajectory] = {}
+
     def get_trajectory_for_task(self, task: Task,
                                 ldl: LiftedDecisionList) -> Trajectory:
-        return self._cached_get_trajectory_for_task(task)
+        if task not in self._task_to_trajectory:
+            trajectory = self._get_trajectory_for_task(task)
+            self._task_to_trajectory[task] = trajectory
+        return self._task_to_trajectory[task]
 
-    @functools.lru_cache(maxsize=None)
-    def _cached_get_trajectory_for_task(self, task: Task) -> Trajectory:
-        # NOTE: this is abstract, but @abc.abstractmethod doesn't play well
-        # with lru_cache, so it is not annotated.
+    @abc.abstractmethod
+    def _get_trajectory_for_task(self, task: Task) -> Trajectory:
         raise NotImplementedError("Override me!")
 
 
 class _UserSuppliedDemoTrajectoryGenerator(_StaticTrajectoryGenerator):
     """Generate trajectories by looking up user-supplied demos."""
 
-    @functools.lru_cache(maxsize=None)
-    def _cached_get_trajectory_for_task(self, task: Task) -> Trajectory:
+    def _get_trajectory_for_task(self, task: Task) -> Trajectory:
         assert self._user_supplied_demos is not None
         demo = self._user_supplied_demos[task]
         return self._demo_to_trajectory(demo, task)
@@ -97,8 +106,7 @@ class _UserSuppliedDemoTrajectoryGenerator(_StaticTrajectoryGenerator):
 class _StaticPlanningTrajectoryGenerator(_StaticTrajectoryGenerator):
     """Generate trajectories by planning in each task."""
 
-    @functools.lru_cache(maxsize=None)
-    def _cached_get_trajectory_for_task(self, task: Task) -> Trajectory:
+    def _get_trajectory_for_task(self, task: Task) -> Trajectory:
         # Run planning once per task and cache the result.
         objects, init, goal = task.objects, task.init, task.goal
         ground_operators = utils.all_ground_operators(self._operators, task)
@@ -137,7 +145,7 @@ class _StaticPlanningTrajectoryGenerator(_StaticTrajectoryGenerator):
         return action_seq, atom_seq, task
 
 
-class _PolicyGuidedPlanningTrajectoryGenerator(_StaticTrajectoryGenerator):
+class _PolicyGuidedPlanningTrajectoryGenerator(_TrajectoryGenerator):
     """Generate trajectories by policy-guided planning."""
 
     def get_trajectory_for_task(self, task: Task,
