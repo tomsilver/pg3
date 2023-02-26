@@ -321,6 +321,15 @@ class Task:
     init: Set[GroundAtom]
     goal: Set[GroundAtom]
 
+    @cached_property
+    def _hash(self) -> int:
+        as_tuple = (frozenset(self.objects), frozenset(self.init),
+                    frozenset(self.goal))
+        return hash(as_tuple)
+
+    def __hash__(self) -> int:
+        return self._hash
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class LDLRule:

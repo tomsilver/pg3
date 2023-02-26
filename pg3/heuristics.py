@@ -28,7 +28,7 @@ class _PG3Heuristic(abc.ABC):
         operators: Set[STRIPSOperator],
         train_tasks: Sequence[Task],
         horizon: int,
-        demos: Optional[List[List[str]]] = None,
+        demos: Optional[Dict[Task, List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
     ) -> None:
@@ -43,14 +43,14 @@ class _PG3Heuristic(abc.ABC):
     def __call__(self, ldl: LiftedDecisionList) -> float:
         """Compute the heuristic value for the given LDL policy."""
         score = 0.0
-        for idx in range(len(self._train_tasks)):
-            score += self._get_score_for_task(ldl, idx)
+        for task in self._train_tasks:
+            score += self._get_score_for_task(ldl, task)
         logging.debug(f"Scoring:\n{ldl}\nScore: {score}")
         return score
 
     @abc.abstractmethod
     def _get_score_for_task(self, ldl: LiftedDecisionList,
-                            task_idx: int) -> float:
+                            task: Task) -> float:
         """Produce a score, with lower better."""
         raise NotImplementedError("Override me!")
 
@@ -60,8 +60,7 @@ class _PolicyEvaluationPG3Heuristic(_PG3Heuristic):
     abstract level."""
 
     def _get_score_for_task(self, ldl: LiftedDecisionList,
-                            task_idx: int) -> float:
-        task = self._train_tasks[task_idx]
+                            task: Task) -> float:
         if self._ldl_solves_abstract_task(ldl, task.init, task.objects,
                                           task.goal):
             return 0.0
@@ -93,35 +92,34 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
         operators: Set[STRIPSOperator],
         train_tasks: Sequence[Task],
         horizon: int,
-        demos: Optional[List[List[str]]] = None,
+        demos: Optional[Dict[Task, List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
     ) -> None:
         super().__init__(predicates, operators, train_tasks, horizon, demos,
                          task_planning_heuristic, max_policy_guided_rollout)
         # Ground the STRIPSOperators once per task and save them.
-        self._train_task_idx_to_ground_operators = {
-            idx: [
+        self._train_task_to_ground_operators = {
+            task: [
                 ground_op for op in operators
                 for ground_op in utils.all_ground_operators(op, task.objects)
             ]
-            for idx, task in enumerate(self._train_tasks)
+            for task in self._train_tasks
         }
 
     def _get_score_for_task(self, ldl: LiftedDecisionList,
-                            task_idx: int) -> float:
+                            task: Task) -> float:
         try:
-            atom_plan = self._get_atom_plan_for_task(ldl, task_idx)
+            atom_plan = self._get_atom_plan_for_task(ldl, task)
         except _PlanningFailure:
             return self._horizon  # worst possible score
         # Note: we need the goal because it's an input to the LDL policy.
-        task = self._train_tasks[task_idx]
         return self._count_missed_steps(ldl, atom_plan, task.objects,
                                         task.goal)
 
     @abc.abstractmethod
     def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+                                task: Task) -> Sequence[Set[GroundAtom]]:
         """Given a task, get the plan with which we will compare the policy."""
         raise NotImplementedError("Override me!")
 
@@ -148,21 +146,20 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
     """
 
     def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+                                task: Task) -> Sequence[Set[GroundAtom]]:
         del ldl  # unused
-        return self._get_demo_atom_plan_for_task(task_idx)
+        return self._get_demo_atom_plan_for_task(task)
 
     @functools.lru_cache(maxsize=None)
-    def _get_demo_atom_plan_for_task(
-            self, task_idx: int) -> Sequence[Set[GroundAtom]]:
+    def _get_demo_atom_plan_for_task(self,
+                                     task: Task) -> Sequence[Set[GroundAtom]]:
         # Run planning once per task and cache the result.
 
-        task = self._train_tasks[task_idx]
         objects, init, goal = task.objects, task.init, task.goal
-        ground_operators = self._train_task_idx_to_ground_operators[task_idx]
+        ground_operators = self._train_task_to_ground_operators[task]
 
         if self._user_supplied_demos is not None:
-            demo = self._user_supplied_demos[task_idx]
+            demo = self._user_supplied_demos[task]
             return self._demo_to_atom_plan(demo, init, ground_operators)
 
         # Set up an A* search.
@@ -237,11 +234,10 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
     """Score a policy based on agreement with policy-guided plans."""
 
     def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+                                task: Task) -> Sequence[Set[GroundAtom]]:
 
-        task = self._train_tasks[task_idx]
         objects, init, goal = task.objects, task.init, task.goal
-        ground_operators = self._train_task_idx_to_ground_operators[task_idx]
+        ground_operators = self._train_task_to_ground_operators[task]
 
         # Set up a policy-guided A* search.
         _S: TypeAlias = FrozenSet[GroundAtom]
