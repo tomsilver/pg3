@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from typing import Dict, List, Optional, Sequence, Set, Tuple, TypeVar, cast
@@ -511,6 +512,129 @@ class LiftedDecisionList:
     def __str__(self) -> str:
         rule_str = "\n  ".join(str(r) for r in self.rules)
         return f"""(define (policy)\n  {rule_str}\n)"""
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class Macro:
+    """A macro is a sequence of STRIPSOperators with shared variables.
+
+    The shared variables are defined by parameter_subs, which maps the
+    parameters of each operator in operators to the set of shared
+    variables.
+    """
+    operators: Sequence[STRIPSOperator]
+    parameter_subs: Sequence[Dict[Variable, Variable]]
+
+    def __post_init__(self) -> None:
+        assert len(self.operators) == len(self.parameter_subs)
+        for op, subs in zip(self.operators, self.parameter_subs):
+            assert set(op.parameters) == set(subs)
+
+    @cached_property
+    def parameters(self) -> List[Variable]:
+        """Get the parameters for this Macro."""
+        return sorted({v for s in self.parameter_subs for v in s.values()})
+
+    @cached_property
+    def _str(self) -> str:
+        member_strs = []
+        for op, sub in zip(self.operators, self.parameter_subs):
+            arg_str = ", ".join([sub[o].name for o in op.parameters])
+            op_str = f"{op.name}({arg_str})"
+            member_strs.append(op_str)
+        members_str = ", ".join(member_strs)
+        return f"Macro[{members_str}]"
+
+    @cached_property
+    def _hash(self) -> int:
+        return hash(str(self))
+
+    def __str__(self) -> str:
+        return self._str
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) == str(other)
+
+    def __lt__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) < str(other)
+
+    def __gt__(self, other: object) -> bool:
+        assert isinstance(other, Macro)
+        return str(self) > str(other)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class _GroundMacro:
+    """A sequence of ground operators with shared objects."""
+
+    ground_operators: Sequence[_GroundSTRIPSOperator]
+
+    @cached_property
+    def parent(self) -> Macro:
+        """Generate the parent macro of this ground macro."""
+        operators = [o.parent for o in self.ground_operators]
+        parameter_subs = []
+        obj_to_var = self.get_lift_mapping()
+        for op in self.ground_operators:
+            parent_vars = [obj_to_var[o] for o in op.objects]
+            op_sub = dict(zip(op.parent.parameters, parent_vars))
+            parameter_subs.append(op_sub)
+        macro = Macro(operators, parameter_subs)
+        return macro
+
+    def get_lift_mapping(self) -> ObjToVarSub:
+        """Map objects in the ground macro to variables."""
+        obj_sub = {}
+        var_counter = itertools.count()
+        for op in self.ground_operators:
+            for obj in op.objects:
+                if obj not in obj_sub:
+                    new_var = Variable(f"?x{next(var_counter)}", obj.type)
+                    obj_sub[obj] = new_var
+        return obj_sub
+
+    @cached_property
+    def _str(self) -> str:
+        member_strs = []
+        for op in self.ground_operators:
+            arg_str = ", ".join([o.name for o in op.objects])
+            op_str = f"{op.name}({arg_str})"
+            member_strs.append(op_str)
+        members_str = ", ".join(member_strs)
+        return f"Macro[{members_str}]"
+
+    @cached_property
+    def _hash(self) -> int:
+        return hash(str(self))
+
+    def __str__(self) -> str:
+        return self._str
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
+        return str(self) == str(other)
+
+    def __lt__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
+        return str(self) < str(other)
+
+    def __gt__(self, other: object) -> bool:
+        assert isinstance(other, _GroundMacro)
+        return str(self) > str(other)
 
 
 class PlanningFailure(Exception):
