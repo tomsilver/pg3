@@ -250,14 +250,22 @@ def get_applicable_operators(
             yield op
 
 
-def all_ground_operators(
-        operator: STRIPSOperator,
-        objects: Collection[Object]) -> Iterator[_GroundSTRIPSOperator]:
-    """Get all possible groundings of the given operator with the given
-    objects."""
-    types = [p.type for p in operator.parameters]
-    for choice in get_object_combinations(objects, types):
-        yield operator.ground(tuple(choice))
+def all_ground_operators(operators: Collection[STRIPSOperator],
+                         task: Task) -> List[_GroundSTRIPSOperator]:
+    """Get all possible groundings of all operators with the task objects."""
+    return _cached_all_ground_operators(frozenset(operators), task)
+
+
+@functools.lru_cache(maxsize=None)
+def _cached_all_ground_operators(operators: FrozenSet[STRIPSOperator],
+                                 task: Task) -> List[_GroundSTRIPSOperator]:
+    ground_operators = set()
+    for operator in operators:
+        types = [p.type for p in operator.parameters]
+        for choice in get_object_combinations(task.objects, types):
+            ground_op = operator.ground(tuple(choice))
+            ground_operators.add(ground_op)
+    return sorted(ground_operators)
 
 
 def get_static_atoms(ground_ops: Collection[_GroundSTRIPSOperator],
@@ -280,14 +288,27 @@ def get_static_atoms(ground_ops: Collection[_GroundSTRIPSOperator],
     return static_atoms
 
 
+def get_all_ground_atoms(predicates: Collection[Predicate],
+                         objects: Collection[Object]) -> Set[GroundAtom]:
+    """Get all groundings of all the predicates given objects."""
+    return _cached_get_all_ground_atoms(frozenset(predicates),
+                                        frozenset(objects))
+
+
+@functools.lru_cache(maxsize=None)
+def _cached_get_all_ground_atoms(
+        predicates: FrozenSet[Predicate],
+        objects: FrozenSet[Object]) -> Set[GroundAtom]:
+    all_atoms = set()
+    for predicate in predicates:
+        all_atoms.update(
+            get_all_ground_atoms_for_predicate(predicate, frozenset(objects)))
+    return all_atoms
+
+
 def get_all_ground_atoms_for_predicate(
         predicate: Predicate, objects: FrozenSet[Object]) -> Set[GroundAtom]:
-    """Get all groundings of the predicate given objects.
-
-    Note: we don't want lru_cache() on this function because we might want
-    to call it with stripped predicates, and we wouldn't want it to return
-    cached values.
-    """
+    """Get all groundings of the predicate given objects."""
     ground_atoms = set()
     for args in get_object_combinations(objects, predicate.types):
         ground_atom = GroundAtom(predicate, args)
@@ -411,10 +432,7 @@ def _create_pyperplan_task(
     static_atoms: Set[GroundAtom],
 ) -> _PyperplanTask:
     """Helper glue for pyperplan heuristics."""
-    all_atoms = set()
-    for predicate in predicates:
-        all_atoms.update(
-            get_all_ground_atoms_for_predicate(predicate, frozenset(objects)))
+    all_atoms = get_all_ground_atoms(predicates, objects)
     # Note: removing static atoms.
     pyperplan_facts = _atoms_to_pyperplan_facts(all_atoms - static_atoms)
     pyperplan_state = _atoms_to_pyperplan_facts(init_atoms - static_atoms)

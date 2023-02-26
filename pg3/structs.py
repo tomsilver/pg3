@@ -513,6 +513,12 @@ class LiftedDecisionList:
         return f"""(define (policy)\n  {rule_str}\n)"""
 
 
+class PlanningFailure(Exception):
+    """Raised when planning for demo generation fails."""
+
+
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
+Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]],
+                   Task]
