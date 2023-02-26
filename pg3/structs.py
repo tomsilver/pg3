@@ -17,6 +17,10 @@ class Type:
     def __hash__(self) -> int:
         return hash(self.name)
 
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Type)
+        return self.name == other.name
+
 
 @dataclass(frozen=True, order=True, repr=False)
 class _TypedEntity:
@@ -171,6 +175,11 @@ class LiftedAtom(_Atom):
         """Create a GroundAtom with a given substitution."""
         assert set(self.variables).issubset(set(sub.keys()))
         return GroundAtom(self.predicate, [sub[v] for v in self.variables])
+
+    def substitute(self, sub: VarToVarSub) -> LiftedAtom:
+        """Create a new LiftedAtom with a given substitution."""
+        assert set(self.variables).issubset(set(sub.keys()))
+        return LiftedAtom(self.predicate, [sub[v] for v in self.variables])
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -643,6 +652,7 @@ class PlanningFailure(Exception):
 
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
+VarToVarSub = Dict[Variable, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
 Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]],
                    Task]

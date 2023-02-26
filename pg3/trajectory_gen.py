@@ -93,14 +93,16 @@ class _UserSuppliedDemoTrajectoryGenerator(_StaticTrajectoryGenerator):
         # Roll the demo forward. If invalid preconditions are encountered,
         # stop the demo there and return the plan prefix.
         atoms_seq = [task.init]
+        action_seq = []
         atoms = task.init
         for op in ground_op_demo:
             if not op.preconditions.issubset(atoms):
                 break
             atoms = utils.apply_operator(op, atoms)
             atoms_seq.append(atoms)
+            action_seq.append(op)
 
-        return ground_op_demo, atoms_seq, task
+        return action_seq, atoms_seq, task
 
 
 class _StaticPlanningTrajectoryGenerator(_StaticTrajectoryGenerator):
