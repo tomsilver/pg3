@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
-from typing import Dict, List, Optional, Sequence, Set, Tuple, TypeVar, cast
 from itertools import count
+from typing import Dict, List, Optional, Sequence, Set, Tuple, TypeVar, cast
 
 
 @dataclass(frozen=True, order=True)
@@ -394,7 +394,6 @@ class _GroundMacro:
                     obj_sub[obj] = new_var
         return obj_sub
 
-
     @cached_property
     def _str(self) -> str:
         member_strs = []
@@ -625,4 +624,5 @@ VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
 VarToVarSub = Dict[Variable, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
-Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]], Task]
+Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]],
+                   Task]

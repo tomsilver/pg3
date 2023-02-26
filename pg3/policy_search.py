@@ -1,19 +1,22 @@
 """PG3 policy search."""
 
-from typing import Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Set, \
+    Tuple
 from typing import Type as TypingType
 
 from typing_extensions import TypeAlias
 
 from pg3 import utils
 from pg3.heuristics import _DemoPlanComparisonPG3Heuristic, _PG3Heuristic, \
-    _PolicyEvaluationPG3Heuristic, _PolicyGuidedPG3Heuristic, _PlanComparisonPG3Heuristic
+    _PlanComparisonPG3Heuristic, _PolicyEvaluationPG3Heuristic, \
+    _PolicyGuidedPG3Heuristic
 from pg3.operators import _AddConditionPG3SearchOperator, \
-    _AddRulePG3SearchOperator, _PG3SearchOperator, _BottomUpPG3SearchOperator, \
-        _DeleteConditionPG3SearchOperator, _DeleteRulePG3SearchOperator
+    _AddRulePG3SearchOperator, _BottomUpPG3SearchOperator, \
+    _DeleteConditionPG3SearchOperator, _DeleteRulePG3SearchOperator, \
+    _PG3SearchOperator
 from pg3.search import run_gbfs, run_hill_climbing
 from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task, \
-    Type, Trajectory
+    Trajectory, Type
 
 
 def learn_policy(domain_str: str,
@@ -83,13 +86,18 @@ def _run_policy_search(
     # TODO: refactor to produce a separate "plan generator" that is used by
     # both the heuristic and the search operators.
     assert isinstance(heuristic, _PlanComparisonPG3Heuristic)
-    def _generate_plan_examples(ldl: LiftedDecisionList) -> Iterator[Trajectory]:
+
+    def _generate_plan_examples(
+            ldl: LiftedDecisionList) -> Iterator[Trajectory]:
         for task_idx in range(len(train_tasks)):
             yield heuristic._get_plan_for_task(ldl, task_idx)
 
     # Create the PG3 search operators.
     search_operators = _create_search_operators(predicates, operators,
-                                                _generate_plan_examples, allow_new_vars)
+                                                _generate_plan_examples,
+                                                allow_new_vars)
+    get_successors = _operators_to_successor_fn(search_operators,
+                                                max_rule_params)
 
     # Initialize the search with an empty list.
     if initial_policy_strs is None:
@@ -99,15 +107,6 @@ def _run_policy_search(
             utils.parse_ldl_from_str(l, types, predicates, operators)
             for l in initial_policy_strs
         ]
-
-    def get_successors(ldl: _S) -> Iterator[Tuple[_A, _S, float]]:
-        for op in search_operators:
-            for i, child in enumerate(op.get_successors(ldl)):
-                if any(
-                        len(rule.parameters) > max_rule_params
-                        for rule in child.rules):
-                    continue
-                yield (op, i), child, 1.0  # cost always 1
 
     if search_method == "gbfs":
         # Terminate only after max expansions.
@@ -131,41 +130,105 @@ def _run_policy_search(
         raise NotImplementedError("Unrecognized search_method "
                                   f"{search_method}.")
 
-    # Return the best seen policy.
+    # Extract the best seen policy.
     best_ldl = path[-1]
+
+    # To promote generalization, if the search terminated early due to a
+    # perfect heuristic, then run a quick hill-climbing search with only
+    # delete operators to try to prune the policy a little bit.
+    if heuristic(best_ldl) == 0:
+        print("Trying to improve the policy by pruning.")
+        search_operators = _create_search_operators(predicates,
+                                                    operators,
+                                                    _generate_plan_examples,
+                                                    allow_new_vars,
+                                                    delete_only=True)
+        heuristic = _create_heuristic(heuristic_name,
+                                      predicates,
+                                      operators,
+                                      train_tasks,
+                                      horizon,
+                                      demos,
+                                      task_planning_heuristic,
+                                      max_policy_guided_rollout,
+                                      regularize=True)
+        initial_states = [best_ldl]
+        get_successors = _operators_to_successor_fn(search_operators,
+                                                    max_rule_params)
+        path, _, _ = run_hill_climbing(initial_states=initial_states,
+                                       check_goal=lambda _: False,
+                                       get_successors=get_successors,
+                                       heuristic=heuristic,
+                                       enforced_depth=hc_enforced_depth)
+        best_ldl = path[-1]
+
     return best_ldl
 
 
 def _create_search_operators(
         predicates: Set[Predicate],
         operators: Set[STRIPSOperator],
-        generate_plan_examples: Callable[[LiftedDecisionList], Iterator[Trajectory]],
-        allow_new_vars: bool = True) -> List[_PG3SearchOperator]:
-    search_operator_classes = [
-        _BottomUpPG3SearchOperator,
-        # TODO uncomment
-        # _AddRulePG3SearchOperator,
-        # _AddConditionPG3SearchOperator,
-        # _DeleteRulePG3SearchOperator,
-        # _DeleteConditionPG3SearchOperator,
-    ]
+        generate_plan_examples: Callable[[LiftedDecisionList],
+                                         Iterator[Trajectory]],
+        allow_new_vars: bool = True,
+        delete_only: bool = False) -> List[_PG3SearchOperator]:
+    if delete_only:
+        search_operator_classes = [
+            _DeleteRulePG3SearchOperator,
+            _DeleteConditionPG3SearchOperator,
+        ]
+    else:
+        search_operator_classes = [
+            _BottomUpPG3SearchOperator,
+            # TODO uncomment
+            # _AddRulePG3SearchOperator,
+            # _AddConditionPG3SearchOperator,
+            # _DeleteRulePG3SearchOperator,
+            # _DeleteConditionPG3SearchOperator,
+        ]
     return [
         cls(predicates, operators, generate_plan_examples, allow_new_vars)
         for cls in search_operator_classes
     ]
 
 
-def _create_heuristic(heuristic_name: str, predicates: Set[Predicate],
+def _operators_to_successor_fn(search_operators: Sequence[_PG3SearchOperator],
+                               max_rule_params: int) -> Callable:
+
+    def get_successors(
+        ldl: LiftedDecisionList
+    ) -> Iterator[Tuple[_PG3SearchOperator, LiftedDecisionList, float]]:
+        for op in search_operators:
+            for i, child in enumerate(op.get_successors(ldl)):
+                if any(
+                        len(rule.parameters) > max_rule_params
+                        for rule in child.rules):
+                    continue
+                yield (op, i), child, 1.0  # cost always 1
+
+    return get_successors
+
+
+def _create_heuristic(heuristic_name: str,
+                      predicates: Set[Predicate],
                       operators: Set[STRIPSOperator],
-                      train_tasks: Sequence[Task], horizon: int,
+                      train_tasks: Sequence[Task],
+                      horizon: int,
                       demos: Optional[List[List[str]]],
                       task_planning_heuristic: str,
-                      max_policy_guided_rollout: int) -> _PG3Heuristic:
+                      max_policy_guided_rollout: int,
+                      regularize: bool = False) -> _PG3Heuristic:
     heuristic_name_to_cls: Dict[str, TypingType[_PG3Heuristic]] = {
         "policy_guided": _PolicyGuidedPG3Heuristic,
         "policy_evaluation": _PolicyEvaluationPG3Heuristic,
         "demo_plan_comparison": _DemoPlanComparisonPG3Heuristic,
     }
     cls = heuristic_name_to_cls[heuristic_name]
-    return cls(predicates, operators, train_tasks, horizon, demos,
-               task_planning_heuristic, max_policy_guided_rollout)
+    return cls(predicates,
+               operators,
+               train_tasks,
+               horizon,
+               demos,
+               task_planning_heuristic,
+               max_policy_guided_rollout,
+               regularize=regularize)

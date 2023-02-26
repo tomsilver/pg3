@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import abc
-from collections import defaultdict
 import functools
+from collections import defaultdict
 from typing import Callable, ClassVar, FrozenSet, Iterator, List, Set
 
 from pg3 import utils
-from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
-    STRIPSOperator, Variable, Trajectory, GroundAtom, _GroundSTRIPSOperator, _GroundMacro
+from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
+    Predicate, STRIPSOperator, Trajectory, Variable, _GroundMacro, \
+    _GroundSTRIPSOperator
 
 
 class _PG3SearchOperator(abc.ABC):
@@ -17,7 +18,8 @@ class _PG3SearchOperator(abc.ABC):
     def __init__(self,
                  predicates: Set[Predicate],
                  operators: Set[STRIPSOperator],
-                 generate_plan_examples: Callable[[LiftedDecisionList], Iterator[Trajectory]],
+                 generate_plan_examples: Callable[[LiftedDecisionList],
+                                                  Iterator[Trajectory]],
                  allow_new_vars: bool = True) -> None:
         self._predicates = predicates
         self._operators = operators
@@ -184,7 +186,7 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
     max_macro_length: ClassVar[int] = 1
 
     def get_successors(
-        self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
+            self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
 
         # Generate macro examples using this LDL (or using demonstrations).
         examples = []
@@ -192,12 +194,12 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
         for action_seq, atom_seq, task in self._generate_plan_examples(ldl):
             assert len(atom_seq) == len(action_seq) + 1
             all_seen_atoms.update({a for atoms in atom_seq for a in atoms})
-            for l in range(self.max_macro_length+1):
+            for l in range(self.max_macro_length + 1):
                 for t in range(len(action_seq) - l):
                     # Priority: higher is better.
                     priority = (t, l)
                     atoms = atom_seq[t]
-                    ground_macro = _GroundMacro(action_seq[t:(t+l+1)])
+                    ground_macro = _GroundMacro(action_seq[t:(t + l + 1)])
                     examples.append((priority, atoms, ground_macro, task))
 
         # Collect all uncovered transitions, organized by (lifted) macro.
@@ -220,7 +222,9 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
 
         # Select a macro to create a rule for, back to front.
         uncovered_macro_examples = macro_to_uncovered[selected_macro]
-        print(f"Found {len(uncovered_macro_examples)} uncovered examples for {selected_macro}")
+        print(
+            f"Found {len(uncovered_macro_examples)} uncovered examples for {selected_macro}"
+        )
 
         # Perform a lifted intersection of positive, negative, and goal
         # preconditions to create a new rule.
@@ -234,15 +238,24 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
             # Create a substitution from objects to parameters.
             sub = ground_macro.get_lift_mapping()
             # Lift positives.
-            lifted_pos = {a.lift(sub) for a in atoms if all(o in sub for o in a.objects)}
+            lifted_pos = {
+                a.lift(sub)
+                for a in atoms if all(o in sub for o in a.objects)
+            }
             # Lift negatives.
             univ = utils.get_all_ground_atoms(self._predicates, task.objects)
             absent_atoms = univ - atoms
             # Only consider negatives that were true at some point.
             absent_atoms &= all_seen_atoms
-            lifted_neg = {a.lift(sub) for a in absent_atoms if all(o in sub for o in a.objects)}
+            lifted_neg = {
+                a.lift(sub)
+                for a in absent_atoms if all(o in sub for o in a.objects)
+            }
             # Lift goal.
-            lifted_goal = {a.lift(sub) for a in task.goal if all(o in sub for o in a.objects)}
+            lifted_goal = {
+                a.lift(sub)
+                for a in task.goal if all(o in sub for o in a.objects)
+            }
             # Intersect.
             if pos_state_preconditions is None:
                 pos_state_preconditions = lifted_pos
@@ -260,17 +273,27 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
             if missing_param not in var_sub:
                 var_sub[missing_param] = missing_param
         parameters = [var_sub[v] for v in parameters]
-        pos_state_preconditions = {a.substitute(var_sub) for a in pos_state_preconditions}
-        neg_state_preconditions = {a.substitute(var_sub) for a in neg_state_preconditions}
-        goal_preconditions = {a.substitute(var_sub) for a in goal_preconditions}
+        pos_state_preconditions = {
+            a.substitute(var_sub)
+            for a in pos_state_preconditions
+        }
+        neg_state_preconditions = {
+            a.substitute(var_sub)
+            for a in neg_state_preconditions
+        }
+        goal_preconditions = {
+            a.substitute(var_sub)
+            for a in goal_preconditions
+        }
 
         # Always include the preconditions of the operator.
         pos_state_preconditions |= operator.preconditions
 
         # Put the new rule at end of the LDL to ensure that previous rules
         # still cover whatever they previously covered.
-        new_rule = LDLRule("BottomUpGenerated",
-            parameters, pos_state_preconditions, neg_state_preconditions, goal_preconditions, operator)
+        new_rule = LDLRule("BottomUpGenerated", parameters,
+                           pos_state_preconditions, neg_state_preconditions,
+                           goal_preconditions, operator)
 
         print("Proposing new rule:")
         print(new_rule)

@@ -4,15 +4,15 @@ from __future__ import annotations
 import abc
 import functools
 import logging
-from typing import Dict, FrozenSet, Iterator, List, Optional, Sequence, Set, \
-    Tuple
+from typing import ClassVar, Dict, FrozenSet, Iterator, List, Optional, \
+    Sequence, Set, Tuple
 
 from typing_extensions import TypeAlias
 
 from pg3 import utils
 from pg3.search import run_astar, run_policy_guided_astar
 from pg3.structs import GroundAtom, LiftedDecisionList, Object, Predicate, \
-    STRIPSOperator, Task, _GroundSTRIPSOperator, Trajectory
+    STRIPSOperator, Task, Trajectory, _GroundSTRIPSOperator
 
 
 class _PlanningFailure(Exception):
@@ -21,6 +21,8 @@ class _PlanningFailure(Exception):
 
 class _PG3Heuristic(abc.ABC):
     """Given an LDL policy, produce a score, with lower better."""
+
+    _penalty_weight: ClassVar[float] = 1e-4
 
     def __init__(
         self,
@@ -31,6 +33,7 @@ class _PG3Heuristic(abc.ABC):
         demos: Optional[List[List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
+        regularize: bool = False,
     ) -> None:
         self._predicates = predicates
         self._operators = operators
@@ -39,12 +42,16 @@ class _PG3Heuristic(abc.ABC):
         self._user_supplied_demos = demos
         self._task_planning_heuristic = task_planning_heuristic
         self._max_policy_guided_rollout = max_policy_guided_rollout
+        self._regularize = regularize
 
     def __call__(self, ldl: LiftedDecisionList) -> float:
         """Compute the heuristic value for the given LDL policy."""
         score = 0.0
         for idx in range(len(self._train_tasks)):
             score += self._get_score_for_task(ldl, idx)
+        if self._regularize:
+            penalty = self._get_ldl_penalty(ldl)
+            score += self._penalty_weight * penalty
         logging.debug(f"Scoring:\n{ldl}\nScore: {score}")
         return score
 
@@ -53,6 +60,12 @@ class _PG3Heuristic(abc.ABC):
                             task_idx: int) -> float:
         """Produce a score, with lower better."""
         raise NotImplementedError("Override me!")
+
+    def _get_ldl_penalty(self, ldl: LiftedDecisionList) -> float:
+        penalty = 0.0
+        for rule in ldl.rules:
+            penalty += len(rule.parameters)
+        return penalty
 
 
 class _PolicyEvaluationPG3Heuristic(_PG3Heuristic):
@@ -96,9 +109,16 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
         demos: Optional[List[List[str]]] = None,
         task_planning_heuristic: str = "lmcut",
         max_policy_guided_rollout: int = 50,
+        regularize: bool = False,
     ) -> None:
-        super().__init__(predicates, operators, train_tasks, horizon, demos,
-                         task_planning_heuristic, max_policy_guided_rollout)
+        super().__init__(predicates,
+                         operators,
+                         train_tasks,
+                         horizon,
+                         demos,
+                         task_planning_heuristic,
+                         max_policy_guided_rollout,
+                         regularize=regularize)
         # Ground the STRIPSOperators once per task and save them.
         self._train_task_idx_to_ground_operators = {
             idx: [
@@ -148,13 +168,12 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
     """
 
     def _get_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Trajectory:
+                           task_idx: int) -> Trajectory:
         del ldl  # unused
         return self._get_demo_plan_for_task(task_idx)
 
     @functools.lru_cache(maxsize=None)
-    def _get_demo_plan_for_task(
-            self, task_idx: int) -> Trajectory:
+    def _get_demo_plan_for_task(self, task_idx: int) -> Trajectory:
         # Run planning once per task and cache the result.
 
         task = self._train_tasks[task_idx]
@@ -200,9 +219,8 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
 
     @staticmethod
     def _demo_to_plan(
-        demo: List[str], task: Task,
-        ground_operators: List[_GroundSTRIPSOperator]
-    ) -> Trajectory:
+            demo: List[str], task: Task,
+            ground_operators: List[_GroundSTRIPSOperator]) -> Trajectory:
         # Organize ground operators for fast lookup.
         ground_op_map: Dict[Tuple[str, Tuple[str, ...]],
                             _GroundSTRIPSOperator] = {}
@@ -239,7 +257,7 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
     """Score a policy based on agreement with policy-guided plans."""
 
     def _get_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Trajectory:
+                           task_idx: int) -> Trajectory:
 
         task = self._train_tasks[task_idx]
         objects, init, goal = task.objects, task.init, task.goal

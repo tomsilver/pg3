@@ -280,13 +280,17 @@ def get_static_atoms(ground_ops: Collection[_GroundSTRIPSOperator],
     return static_atoms
 
 
-def get_all_ground_atoms(predicates: Collection[Predicate], objects: Collection[Object]) -> Set[GroundAtom]:
+def get_all_ground_atoms(predicates: Collection[Predicate],
+                         objects: Collection[Object]) -> Set[GroundAtom]:
     """Get all groundings of all the predicates given objects."""
-    return _cached_get_all_ground_atoms(frozenset(predicates), frozenset(objects))
+    return _cached_get_all_ground_atoms(frozenset(predicates),
+                                        frozenset(objects))
 
 
 @functools.lru_cache(maxsize=None)
-def _cached_get_all_ground_atoms(predicates: FrozenSet[Predicate], objects: FrozenSet[Object]) -> Set[GroundAtom]:
+def _cached_get_all_ground_atoms(
+        predicates: FrozenSet[Predicate],
+        objects: FrozenSet[Object]) -> Set[GroundAtom]:
     all_atoms = set()
     for predicate in predicates:
         all_atoms.update(
