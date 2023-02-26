@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import abc
+from collections import defaultdict
 import functools
-from typing import FrozenSet, Iterator, List, Set
+from typing import Callable, FrozenSet, Iterator, List, Set
 
 from pg3 import utils
 from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
-    STRIPSOperator, Variable
+    STRIPSOperator, Variable, Trajectory, GroundAtom, _GroundSTRIPSOperator
 
 
 class _PG3SearchOperator(abc.ABC):
@@ -16,9 +17,11 @@ class _PG3SearchOperator(abc.ABC):
     def __init__(self,
                  predicates: Set[Predicate],
                  operators: Set[STRIPSOperator],
+                 generate_plan_examples: Callable[[LiftedDecisionList], Iterator[Trajectory]],
                  allow_new_vars: bool = True) -> None:
         self._predicates = predicates
         self._operators = operators
+        self._generate_plan_examples = generate_plan_examples
         self._allow_new_vars = allow_new_vars
 
     @abc.abstractmethod
@@ -173,3 +176,87 @@ class _DeleteRulePG3SearchOperator(_PG3SearchOperator):
         for rule_idx in range(len(ldl.rules)):
             new_rules = [r for i, r in enumerate(ldl.rules) if i != rule_idx]
             yield LiftedDecisionList(new_rules)
+
+
+class _BottomUpPG3SearchOperator(_PG3SearchOperator):
+    """An operator that uses plans to suggest a single new LDL."""
+
+    def get_successors(
+        self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
+
+        # Generate plan examples using this LDL (or using demonstrations).
+        examples = []
+        all_seen_atoms = set()
+        for action_seq, atom_seq, task in self._generate_plan_examples(ldl):
+            assert len(atom_seq) == len(action_seq) + 1
+            for t, (atoms, action) in enumerate(zip(atom_seq, action_seq)):
+                # Store step so that we can later go back to front.
+                examples.append((t, atoms, action, task))
+                all_seen_atoms.update(atoms)
+
+        # Collect all uncovered transitions, organized by (lifted) action.
+        op_to_uncovered = defaultdict(list)
+        max_uncovered_t = -1
+        op_with_max_uncovered_t = None
+        for example in examples:
+            t, atoms, action, task = example
+            ldl_action = utils.query_ldl(ldl, atoms, task.objects, task.goal)
+            if ldl_action is None or ldl_action != action:
+                op_to_uncovered[action.parent].append(example)
+                if t > max_uncovered_t:
+                    max_uncovered_t = t
+                    op_with_max_uncovered_t = action.parent
+
+        # No uncovered transitions found, policy is perfect.
+        if max_uncovered_t == -1:
+            return
+        assert op_with_max_uncovered_t is not None
+
+        # Select an action to create a rule for, back to front.
+        uncovered_op_examples = op_to_uncovered[op_with_max_uncovered_t]
+        print(f"Found {len(uncovered_op_examples)} uncovered examples for {op_with_max_uncovered_t.name}")
+
+        # Perform a lifted intersection of positive, negative, and goal
+        # preconditions to create a new rule.
+        operator = op_with_max_uncovered_t
+        parameters = operator.parameters
+        pos_state_preconditions = None
+        neg_state_preconditions = None
+        goal_preconditions = None
+
+        for _, atoms, action, task in uncovered_op_examples:
+            # For now, just lift using the action parameters.
+            sub = {o: v for o, v in zip(action.objects, parameters)}
+            # Lift positives.
+            lifted_pos = {a.lift(sub) for a in atoms if all(o in sub for o in a.objects)}
+            # Lift negatives.
+            univ = utils.get_all_ground_atoms(self._predicates, task.objects)
+            absent_atoms = univ - atoms
+            # Only consider negatives that were true at some point.
+            absent_atoms &= all_seen_atoms
+            lifted_neg = {a.lift(sub) for a in absent_atoms if all(o in sub for o in a.objects)}
+            # Lift goal.
+            lifted_goal = {a.lift(sub) for a in task.goal if all(o in sub for o in a.objects)}
+            # Intersect.
+            if pos_state_preconditions is None:
+                pos_state_preconditions = lifted_pos
+                neg_state_preconditions = lifted_neg
+                goal_preconditions = lifted_goal
+            else:
+                pos_state_preconditions &= lifted_pos
+                neg_state_preconditions &= lifted_neg
+                goal_preconditions &= lifted_goal
+
+        # Always include the preconditions of the operator.
+        pos_state_preconditions |= operator.preconditions
+
+        # Put the new rule at end of the LDL to ensure that previous rules
+        # still cover whatever they previously covered.
+        new_rule = LDLRule("BottomUpGenerated",
+            parameters, pos_state_preconditions, neg_state_preconditions, goal_preconditions, operator)
+
+        print("Proposing new rule:")
+        print(new_rule)
+
+        new_rules = list(ldl.rules) + [new_rule]
+        yield LiftedDecisionList(new_rules)

@@ -507,3 +507,4 @@ class LiftedDecisionList:
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
+Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]], Task]

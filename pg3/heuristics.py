@@ -12,7 +12,7 @@ from typing_extensions import TypeAlias
 from pg3 import utils
 from pg3.search import run_astar, run_policy_guided_astar
 from pg3.structs import GroundAtom, LiftedDecisionList, Object, Predicate, \
-    STRIPSOperator, Task, _GroundSTRIPSOperator
+    STRIPSOperator, Task, _GroundSTRIPSOperator, Trajectory
 
 
 class _PlanningFailure(Exception):
@@ -111,7 +111,7 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
     def _get_score_for_task(self, ldl: LiftedDecisionList,
                             task_idx: int) -> float:
         try:
-            atom_plan = self._get_atom_plan_for_task(ldl, task_idx)
+            _, atom_plan, _ = self._get_plan_for_task(ldl, task_idx)
         except _PlanningFailure:
             return self._horizon  # worst possible score
         # Note: we need the goal because it's an input to the LDL policy.
@@ -120,8 +120,8 @@ class _PlanComparisonPG3Heuristic(_PG3Heuristic):
                                         task.goal)
 
     @abc.abstractmethod
-    def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+    def _get_plan_for_task(self, ldl: LiftedDecisionList,
+                           task_idx: int) -> Trajectory:
         """Given a task, get the plan with which we will compare the policy."""
         raise NotImplementedError("Override me!")
 
@@ -147,14 +147,14 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
     The demos are generated with a planner, once per train task.
     """
 
-    def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+    def _get_plan_for_task(self, ldl: LiftedDecisionList,
+                                task_idx: int) -> Trajectory:
         del ldl  # unused
-        return self._get_demo_atom_plan_for_task(task_idx)
+        return self._get_demo_plan_for_task(task_idx)
 
     @functools.lru_cache(maxsize=None)
-    def _get_demo_atom_plan_for_task(
-            self, task_idx: int) -> Sequence[Set[GroundAtom]]:
+    def _get_demo_plan_for_task(
+            self, task_idx: int) -> Trajectory:
         # Run planning once per task and cache the result.
 
         task = self._train_tasks[task_idx]
@@ -163,7 +163,7 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
 
         if self._user_supplied_demos is not None:
             demo = self._user_supplied_demos[task_idx]
-            return self._demo_to_atom_plan(demo, init, ground_operators)
+            return self._demo_to_plan(demo, task, ground_operators)
 
         # Set up an A* search.
         _S: TypeAlias = FrozenSet[GroundAtom]
@@ -186,7 +186,7 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
             objects=objects,
         )
 
-        planned_frozen_atoms_seq, _ = run_astar(
+        planned_frozen_atoms_seq, action_seq = run_astar(
             initial_states=[frozenset(init)],
             check_goal=check_goal,
             get_successors=get_successors,
@@ -195,13 +195,14 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
         if not check_goal(planned_frozen_atoms_seq[-1]):
             raise _PlanningFailure()
 
-        return [set(atoms) for atoms in planned_frozen_atoms_seq]
+        atom_seq = [set(atoms) for atoms in planned_frozen_atoms_seq]
+        return action_seq, atom_seq, task
 
     @staticmethod
-    def _demo_to_atom_plan(
-        demo: List[str], init: Set[GroundAtom],
+    def _demo_to_plan(
+        demo: List[str], task: Task,
         ground_operators: List[_GroundSTRIPSOperator]
-    ) -> Sequence[Set[GroundAtom]]:
+    ) -> Trajectory:
         # Organize ground operators for fast lookup.
         ground_op_map: Dict[Tuple[str, Tuple[str, ...]],
                             _GroundSTRIPSOperator] = {}
@@ -222,6 +223,7 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
 
         # Roll the demo forward. If invalid preconditions are encountered,
         # stop the demo there and return the plan prefix.
+        init = task.init
         atoms_seq = [init]
         atoms = init
         for op in ground_op_demo:
@@ -230,14 +232,14 @@ class _DemoPlanComparisonPG3Heuristic(_PlanComparisonPG3Heuristic):
             atoms = utils.apply_operator(op, atoms)
             atoms_seq.append(atoms)
 
-        return atoms_seq
+        return ground_op_demo, atoms_seq, task
 
 
 class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
     """Score a policy based on agreement with policy-guided plans."""
 
-    def _get_atom_plan_for_task(self, ldl: LiftedDecisionList,
-                                task_idx: int) -> Sequence[Set[GroundAtom]]:
+    def _get_plan_for_task(self, ldl: LiftedDecisionList,
+                                task_idx: int) -> Trajectory:
 
         task = self._train_tasks[task_idx]
         objects, init, goal = task.objects, task.init, task.goal
@@ -269,7 +271,7 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
         def policy(atoms: _S) -> Optional[_A]:
             return utils.query_ldl(ldl, set(atoms), objects, goal)
 
-        planned_frozen_atoms_seq, _ = run_policy_guided_astar(
+        planned_frozen_atoms_seq, ground_op_seq = run_policy_guided_astar(
             initial_states=[frozenset(init)],
             check_goal=check_goal,
             get_valid_actions=get_valid_actions,
@@ -282,4 +284,5 @@ class _PolicyGuidedPG3Heuristic(_PlanComparisonPG3Heuristic):
         if not check_goal(planned_frozen_atoms_seq[-1]):
             raise _PlanningFailure()
 
-        return [set(atoms) for atoms in planned_frozen_atoms_seq]
+        atom_seq = [set(atoms) for atoms in planned_frozen_atoms_seq]
+        return ground_op_seq, atom_seq, task
