@@ -2,9 +2,10 @@
 
 from pg3.operators import _AddConditionPG3SearchOperator, \
     _AddRulePG3SearchOperator, _DeleteConditionPG3SearchOperator, \
-    _DeleteRulePG3SearchOperator
+    _DeleteRulePG3SearchOperator, _BottomUpPG3SearchOperator
 from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
     STRIPSOperator, Type, Variable
+from pg3.trajectory_gen import _UserSuppliedDemoTrajectoryGenerator
 
 
 def test_pg3_search_operators():
@@ -75,7 +76,9 @@ def test_pg3_search_operators():
     ldl2 = LiftedDecisionList([pick_up_rule])
 
     # _AddRulePG3SearchOperator
-    op = _AddRulePG3SearchOperator(preds, operators)
+    trajectory_gen = _UserSuppliedDemoTrajectoryGenerator(preds, operators)
+    train_tasks = []
+    op = _AddRulePG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
 
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 3
@@ -126,7 +129,7 @@ def test_pg3_search_operators():
 )"""
 
     # _AddConditionPG3SearchOperator
-    op = _AddConditionPG3SearchOperator(preds, operators)
+    op = _AddConditionPG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
 
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 0
@@ -144,7 +147,7 @@ def test_pg3_search_operators():
 )"""
 
     # _DeleteConditionPG3SearchOperator
-    op = _DeleteConditionPG3SearchOperator(preds, operators)
+    op = _DeleteConditionPG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
 
     # Empty rule should have no successors
     succ1 = list(op.get_successors(ldl1))
@@ -215,7 +218,7 @@ def test_pg3_search_operators():
 )"""
 
     # _DeleteRulePG3SearchOperator
-    op = _DeleteRulePG3SearchOperator(preds, operators)
+    op = _DeleteRulePG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
 
     # Empty list should have no successors
     succ1 = list(op.get_successors(ldl1))
@@ -226,3 +229,5 @@ def test_pg3_search_operators():
     assert len(succ2) == 1
     ldl2_succ = next(iter(succ2))
     assert len(ldl2_succ.rules) == 0
+
+    # _BottomUpPG3SearchOperator
