@@ -9,7 +9,8 @@ from pg3 import utils
 from pg3.heuristics import _PG3Heuristic, _PlanComparisonPG3Heuristic, \
     _PolicyEvaluationPG3Heuristic
 from pg3.operators import _AddConditionPG3SearchOperator, \
-    _AddRulePG3SearchOperator, _PG3SearchOperator
+    _AddRulePG3SearchOperator, _BottomUpPG3SearchOperator, \
+    _PG3SearchOperator
 from pg3.search import run_gbfs, run_hill_climbing
 from pg3.structs import LiftedDecisionList, Predicate, STRIPSOperator, Task, \
     Type
@@ -87,7 +88,8 @@ def _run_policy_search(
 
     # Create the PG3 search operators.
     search_operators = _create_search_operators(predicates, operators,
-                                                allow_new_vars)
+                                                trajectory_generator,
+                                                train_tasks, allow_new_vars)
 
     # The heuristic is what distinguishes PG3 from baseline approaches.
     heuristic = _create_heuristic(heuristic_name, trajectory_generator,
@@ -141,13 +143,19 @@ def _run_policy_search(
 def _create_search_operators(
         predicates: Set[Predicate],
         operators: Set[STRIPSOperator],
+        trajectory_gen: _TrajectoryGenerator,
+        train_tasks: Sequence[Task],
         allow_new_vars: bool = True) -> List[_PG3SearchOperator]:
     search_operator_classes = [
+        _BottomUpPG3SearchOperator,
         _AddRulePG3SearchOperator,
         _AddConditionPG3SearchOperator,
     ]
+    # Ignoring strange mypy issue that only arises when we use all of the
+    # search operators, but not any pair of them.
     return [
-        cls(predicates, operators, allow_new_vars)
+        cls(predicates, operators, trajectory_gen, train_tasks,
+            allow_new_vars)  # type: ignore
         for cls in search_operator_classes
     ]
 
