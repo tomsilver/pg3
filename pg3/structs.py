@@ -172,6 +172,11 @@ class LiftedAtom(_Atom):
         assert set(self.variables).issubset(set(sub.keys()))
         return GroundAtom(self.predicate, [sub[v] for v in self.variables])
 
+    def substitute(self, sub: VarToVarSub) -> LiftedAtom:
+        """Create a new LiftedAtom with a given substitution."""
+        assert set(self.variables).issubset(set(sub.keys()))
+        return LiftedAtom(self.predicate, [sub[v] for v in self.variables])
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class GroundAtom(_Atom):
@@ -572,7 +577,7 @@ class Macro:
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class _GroundMacro:
+class GroundMacro:
     """A sequence of ground operators with shared objects."""
 
     ground_operators: Sequence[_GroundSTRIPSOperator]
@@ -625,15 +630,15 @@ class _GroundMacro:
         return self._hash
 
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, _GroundMacro)
+        assert isinstance(other, GroundMacro)
         return str(self) == str(other)
 
     def __lt__(self, other: object) -> bool:
-        assert isinstance(other, _GroundMacro)
+        assert isinstance(other, GroundMacro)
         return str(self) < str(other)
 
     def __gt__(self, other: object) -> bool:
-        assert isinstance(other, _GroundMacro)
+        assert isinstance(other, GroundMacro)
         return str(self) > str(other)
 
 
@@ -643,6 +648,7 @@ class PlanningFailure(Exception):
 
 VarToObjSub = Dict[Variable, Object]
 ObjToVarSub = Dict[Object, Variable]
+VarToVarSub = Dict[Variable, Variable]
 ObjectOrVariable = TypeVar("ObjectOrVariable", bound=_TypedEntity)
 Trajectory = Tuple[Sequence[_GroundSTRIPSOperator], Sequence[Set[GroundAtom]],
                    Task]
