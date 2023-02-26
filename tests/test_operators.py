@@ -1,8 +1,8 @@
 """Tests for operators.py."""
 
 from pg3.operators import _AddConditionPG3SearchOperator, \
-    _AddRulePG3SearchOperator, _DeleteConditionPG3SearchOperator, \
-    _DeleteRulePG3SearchOperator, _BottomUpPG3SearchOperator
+    _AddRulePG3SearchOperator, _BottomUpPG3SearchOperator, \
+    _DeleteConditionPG3SearchOperator, _DeleteRulePG3SearchOperator
 from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
     STRIPSOperator, Type, Variable
 from pg3.trajectory_gen import _UserSuppliedDemoTrajectoryGenerator
@@ -78,7 +78,8 @@ def test_pg3_search_operators():
     # _AddRulePG3SearchOperator
     trajectory_gen = _UserSuppliedDemoTrajectoryGenerator(preds, operators)
     train_tasks = []
-    op = _AddRulePG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
+    op = _AddRulePG3SearchOperator(preds, operators, trajectory_gen,
+                                   train_tasks)
 
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 3
@@ -129,7 +130,8 @@ def test_pg3_search_operators():
 )"""
 
     # _AddConditionPG3SearchOperator
-    op = _AddConditionPG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
+    op = _AddConditionPG3SearchOperator(preds, operators, trajectory_gen,
+                                        train_tasks)
 
     succ1 = list(op.get_successors(ldl1))
     assert len(succ1) == 0
@@ -147,7 +149,8 @@ def test_pg3_search_operators():
 )"""
 
     # _DeleteConditionPG3SearchOperator
-    op = _DeleteConditionPG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
+    op = _DeleteConditionPG3SearchOperator(preds, operators, trajectory_gen,
+                                           train_tasks)
 
     # Empty rule should have no successors
     succ1 = list(op.get_successors(ldl1))
@@ -218,7 +221,8 @@ def test_pg3_search_operators():
 )"""
 
     # _DeleteRulePG3SearchOperator
-    op = _DeleteRulePG3SearchOperator(preds, operators, trajectory_gen, train_tasks)
+    op = _DeleteRulePG3SearchOperator(preds, operators, trajectory_gen,
+                                      train_tasks)
 
     # Empty list should have no successors
     succ1 = list(op.get_successors(ldl1))
@@ -231,3 +235,4 @@ def test_pg3_search_operators():
     assert len(ldl2_succ.rules) == 0
 
     # _BottomUpPG3SearchOperator
+    # TODO

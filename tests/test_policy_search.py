@@ -2,6 +2,7 @@
 
 import pytest
 
+from pg3 import utils
 from pg3.policy_search import learn_policy
 
 
@@ -148,27 +149,64 @@ def test_learn_policy():
                               horizon=50,
                               heuristic_name="demo_plan_comparison")
 
-    assert policy_str == """(define (policy)
-  (:rule pick-up
-    :parameters (?paper - paper ?loc - loc)
-    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals ()
-    :action (pick-up ?paper ?loc)
+    # Test that the policy solves a new task.
+    test_problem = """(define (problem newspaper) (:domain newspapers)
+  (:objects
+	loc1 - loc
+	loc2 - loc
+	loc3 - loc
+	loc4 - loc
+	loc5 - loc
+	loc6 - loc
+    loc7 - loc
+	paper1 - paper
+	paper2 - paper
+	paper3 - paper
+	paper4 - paper
+	paper5 - paper
+    paper6 - paper
   )
-  (:rule deliver
-    :parameters (?paper - paper ?loc - loc)
-    :preconditions (and (at ?loc) (carrying ?paper) (wantspaper ?loc))
-    :goals ()
-    :action (deliver ?paper ?loc)
+  (:init 
+    (isHomeBase loc4)
+    (satisfied loc4)
+    (at loc4)
+    (wantsPaper loc5)
+    (wantsPaper loc6)
+    (wantsPaper loc7)
+    (safe loc1)
+    (safe loc4)
+    (safe loc5)
+    (safe loc6)
+    (safe loc7)
+    (unpacked paper1)
+    (unpacked paper2)
+    (unpacked paper3)
+    (unpacked paper4)
+    (unpacked paper5)
+    (unpacked paper6)
   )
-  (:rule move
-    :parameters (?from - loc ?to - loc)
-    :preconditions (and (at ?from) (safe ?from) (wantspaper ?to))
-    :goals ()
-    :action (move ?from ?to)
-  )
+  (:goal (and
+	(satisfied loc5) (satisfied loc6) (satisfied loc7)))
 )"""
 
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    policy = utils.parse_ldl_from_str(policy_str, types, predicates, operators)
+    task = utils.pddl_problem_str_to_task(test_problem, domain_str, types,
+                                          predicates)
+    state = task.init
+    solved = False
+    for _ in range(15):
+        # Policy solved task.
+        if task.goal.issubset(state):
+            solved = True
+            break
+        action = utils.query_ldl(policy, state, task.objects, task.goal)
+        assert action is not None
+        assert action.preconditions.issubset(state)
+        state = utils.apply_operator(action, state)
+    assert solved, "Learned policy did not solve task"
+
+    # Test policy learning failure.
     policy_str = learn_policy(domain_str,
                               problem_strs,
                               horizon=50,
@@ -211,14 +249,9 @@ def test_learn_policy():
                               demos=demos,
                               heuristic_name="demo_plan_comparison")
 
-    assert policy_str == """(define (policy)
-  (:rule pick-up
-    :parameters (?paper - paper ?loc - loc)
-    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals ()
-    :action (pick-up ?paper ?loc)
-  )
-)"""
+    policy = utils.parse_ldl_from_str(policy_str, types, predicates, operators)
+    assert len(policy.rules) == 1
+    assert policy.rules[0].operator.name == "pick-up"
 
     policy_str = learn_policy(domain_str,
                               problem_strs,

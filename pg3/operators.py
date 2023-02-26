@@ -297,9 +297,9 @@ class _BottomUpPG3SearchOperator(_PG3SearchOperator):
 
         # Put the new rule at end of the LDL to ensure that previous rules
         # still cover whatever they previously covered.
-        new_rule = LDLRule("BottomUpGenerated", parameters,
-                           pos_state_preconditions, neg_state_preconditions,
-                           goal_preconditions, operator)
+        new_rule = LDLRule(operator.name, parameters, pos_state_preconditions,
+                           neg_state_preconditions, goal_preconditions,
+                           operator)
 
         new_rules = list(ldl.rules) + [new_rule]
         yield LiftedDecisionList(new_rules)
