@@ -76,6 +76,7 @@ def test_predicate_and_atom():
     plate = Object("plate", plate_type)
     cup_var = Variable("?cup", cup_type)
     plate_var = Variable("?plate", plate_type)
+    plate_var2 = Variable("?plate2", plate_type)
     # Lifted atoms
     lifted_atom = LiftedAtom(pred, [cup_var, plate_var])
     lifted_atom2 = LiftedAtom(pred, [cup_var, plate_var])
@@ -93,6 +94,12 @@ def test_predicate_and_atom():
     assert isinstance(lifted_atom, LiftedAtom)
     assert (str(lifted_atom) == repr(lifted_atom) ==
             "On(?cup:cup_type, ?plate:plate_type)")
+    lifted_atom4 = lifted_atom.substitute({
+        cup_var: cup_var,
+        plate_var: plate_var2
+    })
+    assert str(lifted_atom4) == "On(?cup:cup_type, ?plate2:plate_type)"
+
     # Ground atoms
     ground_atom = GroundAtom(pred, [cup1, plate])
     assert ground_atom.predicate == pred
