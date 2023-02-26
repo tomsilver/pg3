@@ -4,8 +4,8 @@ import pytest
 
 from pg3 import utils
 from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Object, Predicate, STRIPSOperator, Type, Variable, _Atom, \
-    _GroundSTRIPSOperator
+    Macro, Object, Predicate, STRIPSOperator, Type, Variable, _Atom, \
+    _GroundMacro, _GroundSTRIPSOperator
 
 
 def test_object_type():
@@ -385,3 +385,71 @@ def test_lifted_decision_lists():
     :goals (and (HandEmpty ?robot) (On ?cup ?plate))
     :action (Noop )
   )"""
+
+
+def test_macros():
+    """Tests for Macro and _GroundMacro."""
+    cup_type = Type("cup_type")
+    plate_type = Type("plate_type")
+    on = Predicate("On", [cup_type, plate_type])
+    not_on = Predicate("NotOn", [cup_type, plate_type])
+    on_table = Predicate("OnTable", [cup_type])
+    holding = Predicate("Holding", [cup_type])
+    cup_var = Variable("?cup", cup_type)
+    plate_var = Variable("?plate", plate_type)
+    pick_op = STRIPSOperator("Pick",
+                             parameters=[cup_var],
+                             preconditions={LiftedAtom(on_table, [cup_var])},
+                             add_effects={LiftedAtom(holding, [cup_var])},
+                             delete_effects={LiftedAtom(on_table, [cup_var])})
+
+    place_op = STRIPSOperator(
+        "Place",
+        parameters=[cup_var, plate_var],
+        preconditions={LiftedAtom(holding, [cup_var])},
+        add_effects={LiftedAtom(on, [cup_var, plate_var])},
+        delete_effects={LiftedAtom(not_on, [cup_var, plate_var])})
+
+    cup = Object("cup", cup_type)
+    plate = Object("plate", plate_type)
+    ground_ops = [pick_op.ground((cup, )), place_op.ground((cup, plate))]
+    ground_macro = _GroundMacro(ground_ops)
+
+    assert str(ground_macro) == repr(ground_macro) == \
+        "Macro[Pick(cup), Place(cup, plate)]"
+    assert isinstance(hash(ground_macro), int)
+
+    ground_ops2 = [pick_op.ground((cup, )), place_op.ground((cup, plate))]
+    ground_macro2 = _GroundMacro(ground_ops2)
+    assert ground_macro == ground_macro2
+    assert len({ground_macro, ground_macro2}) == 1
+
+    ground_ops3 = [pick_op.ground((cup, ))]
+    ground_macro3 = _GroundMacro(ground_ops3)
+    assert ground_macro != ground_macro3
+    assert ground_macro < ground_macro3
+    assert ground_macro3 > ground_macro
+
+    macro = ground_macro.parent
+    assert isinstance(macro, Macro)
+    assert str(macro) == repr(macro) == \
+        "Macro[Pick(?x0), Place(?x0, ?x1)]"
+    assert isinstance(hash(macro), int)
+
+    assert macro.operators == [pick_op, place_op]
+    x0, x1 = macro.parameters
+    assert x0.name == "?x0"
+    assert x1.name == "?x1"
+    assert macro.parameter_subs == [{
+        cup_var: x0
+    }, {
+        cup_var: x0,
+        plate_var: x1
+    }]
+
+    macro2 = ground_macro2.parent
+    assert macro == macro2
+    macro3 = ground_macro3.parent
+    assert macro != macro3
+    assert macro < macro3
+    assert macro3 > macro
