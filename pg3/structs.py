@@ -17,6 +17,10 @@ class Type:
     def __hash__(self) -> int:
         return hash(self.name)
 
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Type)
+        return self.name == other.name
+
 
 @dataclass(frozen=True, order=True, repr=False)
 class _TypedEntity:

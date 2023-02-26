@@ -1,5 +1,6 @@
 """Tests for operators.py."""
 
+from pg3 import utils
 from pg3.operators import _AddConditionPG3SearchOperator, \
     _AddRulePG3SearchOperator, _BottomUpPG3SearchOperator, \
     _DeleteConditionPG3SearchOperator, _DeleteRulePG3SearchOperator
@@ -235,4 +236,183 @@ def test_pg3_search_operators():
     assert len(ldl2_succ.rules) == 0
 
     # _BottomUpPG3SearchOperator
-    # TODO
+
+    domain_str = """(define (domain newspapers)
+    (:requirements :strips :typing)
+    (:types loc paper)
+    (:predicates 
+        (at ?loc - loc)
+        (isHomeBase ?loc - loc)
+        (satisfied ?loc - loc)
+        (wantsPaper ?loc - loc)
+        (unpacked ?paper - paper)
+        (carrying ?paper - paper)
+        (safe ?loc - loc)
+    )
+    
+    (:action pick-up
+        :parameters (?paper - paper ?loc - loc)
+        :precondition (and
+            (at ?loc)
+            (isHomeBase ?loc)
+            (unpacked ?paper)
+        )
+        :effect (and
+            (not (unpacked ?paper))
+            (carrying ?paper)
+        )
+    )
+    
+    (:action move
+        :parameters (?from - loc ?to - loc)
+        :precondition (and
+            (at ?from) 
+            (safe ?from)
+        )
+        :effect (and
+            (not (at ?from))
+            (at ?to)
+        )
+    )
+    
+    (:action deliver
+        :parameters (?paper - paper ?loc - loc)
+        :precondition (and
+            (at ?loc)
+            (wantsPaper ?loc)
+            (carrying ?paper)
+        )
+        :effect (and
+            (not (carrying ?paper))
+            (not (wantsPaper ?loc))
+            (satisfied ?loc)
+        )
+    )
+    
+)"""
+
+    problem_str1 = """(define (problem newspaper) (:domain newspapers)
+  (:objects
+	loc1 - loc
+	loc2 - loc
+	paper1 - paper
+  )
+  (:init 
+	(at loc2)
+	(ishomebase loc2)
+    (at loc2)
+    (safe loc1)
+    (safe loc2)
+	(unpacked paper1)
+	(satisfied loc2)
+	(wantspaper loc1)
+  )
+  (:goal (and
+	(satisfied loc1)))
+)"""
+
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    task1 = utils.pddl_problem_str_to_task(problem_str1, domain_str, types,
+                                           predicates)
+    user_supplied_demos = {
+        task1: ["(pick-up paper1 loc2)"],
+    }
+    train_tasks = [task1]
+    trajectory_gen = _UserSuppliedDemoTrajectoryGenerator(
+        preds, operators, user_supplied_demos=user_supplied_demos)
+    op = _BottomUpPG3SearchOperator(preds, operators, trajectory_gen,
+                                    train_tasks)
+    bottom_up_succs1 = list(op.get_successors(ldl1))
+    assert len(bottom_up_succs1) == 1
+    succ = bottom_up_succs1[0]
+    assert str(succ) == """(define (policy)
+  (:rule pick-up
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (safe ?loc) (satisfied ?loc) (unpacked ?paper) (not (carrying ?paper)))
+    :goals ()
+    :action (pick-up ?paper ?loc)
+  )
+)"""
+
+    user_supplied_demos = {
+        task1:
+        ["(pick-up paper1 loc2)", "(move loc2 loc1)", "(deliver paper1 loc1)"],
+    }
+    train_tasks = [task1]
+    trajectory_gen = _UserSuppliedDemoTrajectoryGenerator(
+        preds, operators, user_supplied_demos=user_supplied_demos)
+    op = _BottomUpPG3SearchOperator(preds, operators, trajectory_gen,
+                                    train_tasks)
+    bottom_up_succs2 = list(op.get_successors(ldl1))
+    assert len(bottom_up_succs2) == 1
+    succ = bottom_up_succs2[0]
+    assert str(succ) == """(define (policy)
+  (:rule deliver
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (carrying ?paper) (safe ?loc) (wantspaper ?loc) (not (satisfied ?loc)) (not (unpacked ?paper)))
+    :goals (satisfied ?loc)
+    :action (deliver ?paper ?loc)
+  )
+)"""
+    ldl4 = succ
+
+    problem_str2 = """(define (problem newspaper) (:domain newspapers)
+  (:objects
+	loc1 - loc
+	loc2 - loc
+	loc3 - loc
+	loc4 - loc
+	paper1 - paper
+	paper2 - paper
+  )
+  (:init 
+	(at loc1)
+	(ishomebase loc1)
+    (at loc1)
+    (safe loc1)
+    (safe loc2)
+	(unpacked paper1)
+	(unpacked paper2)
+	(satisfied loc1)
+	(wantspaper loc2)
+  )
+  (:goal (and
+	(satisfied loc2)))
+)"""
+
+    types, predicates, operators = utils.parse_pddl_domain(domain_str)
+    task2 = utils.pddl_problem_str_to_task(problem_str2, domain_str, types,
+                                           predicates)
+
+    user_supplied_demos = {
+        task1:
+        ["(pick-up paper1 loc2)", "(move loc2 loc1)", "(deliver paper1 loc1)"],
+        task2:
+        ["(pick-up paper1 loc1)", "(move loc1 loc2)", "(deliver paper1 loc2)"],
+    }
+    train_tasks = [task1, task2]
+    trajectory_gen = _UserSuppliedDemoTrajectoryGenerator(
+        preds, operators, user_supplied_demos=user_supplied_demos)
+    op = _BottomUpPG3SearchOperator(preds, operators, trajectory_gen,
+                                    train_tasks)
+    bottom_up_succs3 = list(op.get_successors(ldl4))
+    assert len(bottom_up_succs3) == 1
+    succ = bottom_up_succs3[0]
+    assert str(succ) == """(define (policy)
+  (:rule deliver
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (carrying ?paper) (safe ?loc) (wantspaper ?loc) (not (satisfied ?loc)) (not (unpacked ?paper)))
+    :goals (satisfied ?loc)
+    :action (deliver ?paper ?loc)
+  )
+  (:rule move
+    :parameters (?from - loc ?to - loc ?x2 - paper)
+    :preconditions (and (at ?from) (carrying ?x2) (ishomebase ?from) (safe ?from) (safe ?to) (satisfied ?from) (wantspaper ?to) (not (at ?to)) (not (ishomebase ?to)) (not (satisfied ?to)) (not (unpacked ?x2)) (not (wantspaper ?from)))
+    :goals (satisfied ?to)
+    :action (move ?from ?to)
+  )
+)"""
+    # Add one more rule to create perfect policy.
+    succ = list(op.get_successors(succ))[0]
+    # Now there should be no successors.
+    assert len(list(op.get_successors(succ))) == 0
