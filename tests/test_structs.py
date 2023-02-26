@@ -3,9 +3,9 @@
 import pytest
 
 from pg3 import utils
-from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Macro, Object, Predicate, STRIPSOperator, Type, Variable, _Atom, \
-    _GroundMacro, _GroundSTRIPSOperator
+from pg3.structs import GroundAtom, GroundMacro, LDLRule, LiftedAtom, \
+    LiftedDecisionList, Macro, Object, Predicate, STRIPSOperator, Type, \
+    Variable, _Atom, _GroundSTRIPSOperator
 
 
 def test_object_type():
@@ -388,7 +388,7 @@ def test_lifted_decision_lists():
 
 
 def test_macros():
-    """Tests for Macro and _GroundMacro."""
+    """Tests for Macro and GroundMacro."""
     cup_type = Type("cup_type")
     plate_type = Type("plate_type")
     on = Predicate("On", [cup_type, plate_type])
@@ -413,19 +413,19 @@ def test_macros():
     cup = Object("cup", cup_type)
     plate = Object("plate", plate_type)
     ground_ops = [pick_op.ground((cup, )), place_op.ground((cup, plate))]
-    ground_macro = _GroundMacro(ground_ops)
+    ground_macro = GroundMacro(ground_ops)
 
     assert str(ground_macro) == repr(ground_macro) == \
         "Macro[Pick(cup), Place(cup, plate)]"
     assert isinstance(hash(ground_macro), int)
 
     ground_ops2 = [pick_op.ground((cup, )), place_op.ground((cup, plate))]
-    ground_macro2 = _GroundMacro(ground_ops2)
+    ground_macro2 = GroundMacro(ground_ops2)
     assert ground_macro == ground_macro2
     assert len({ground_macro, ground_macro2}) == 1
 
     ground_ops3 = [pick_op.ground((cup, ))]
-    ground_macro3 = _GroundMacro(ground_ops3)
+    ground_macro3 = GroundMacro(ground_ops3)
     assert ground_macro != ground_macro3
     assert ground_macro < ground_macro3
     assert ground_macro3 > ground_macro
