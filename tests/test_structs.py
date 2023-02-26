@@ -3,9 +3,9 @@
 import pytest
 
 from pg3 import utils
-from pg3.structs import GroundAtom, LDLRule, LiftedAtom, LiftedDecisionList, \
-    Macro, Object, Predicate, STRIPSOperator, Type, Variable, _Atom, \
-    GroundMacro, _GroundSTRIPSOperator
+from pg3.structs import GroundAtom, GroundMacro, LDLRule, LiftedAtom, \
+    LiftedDecisionList, Macro, Object, Predicate, STRIPSOperator, Type, \
+    Variable, _Atom, _GroundSTRIPSOperator
 
 
 def test_object_type():

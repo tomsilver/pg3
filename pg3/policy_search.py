@@ -151,8 +151,11 @@ def _create_search_operators(
         _AddRulePG3SearchOperator,
         _AddConditionPG3SearchOperator,
     ]
+    # Ignoring strange mypy issue that only arises when we use all of the
+    # search operators, but not any pair of them.
     return [
-        cls(predicates, operators, trajectory_gen, train_tasks, allow_new_vars)
+        cls(predicates, operators, trajectory_gen, train_tasks,
+            allow_new_vars)  # type: ignore
         for cls in search_operator_classes
     ]
 

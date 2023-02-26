@@ -7,8 +7,8 @@ from collections import defaultdict
 from typing import ClassVar, FrozenSet, Iterator, List, Optional, Sequence, Set
 
 from pg3 import utils
-from pg3.structs import LDLRule, LiftedAtom, LiftedDecisionList, Predicate, \
-    STRIPSOperator, Task, Variable, GroundMacro
+from pg3.structs import GroundMacro, LDLRule, LiftedAtom, LiftedDecisionList, \
+    Predicate, STRIPSOperator, Task, Variable
 from pg3.trajectory_gen import _TrajectoryGenerator
 
 
