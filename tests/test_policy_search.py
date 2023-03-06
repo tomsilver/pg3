@@ -149,17 +149,17 @@ def test_learn_policy():
                               heuristic_name="demo_plan_comparison")
 
     assert policy_str == """(define (policy)
-  (:rule pick-up
-    :parameters (?paper - paper ?loc - loc)
-    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
-    :goals ()
-    :action (pick-up ?paper ?loc)
-  )
   (:rule deliver
     :parameters (?paper - paper ?loc - loc)
     :preconditions (and (at ?loc) (carrying ?paper) (wantspaper ?loc))
     :goals ()
     :action (deliver ?paper ?loc)
+  )
+  (:rule pick-up
+    :parameters (?paper - paper ?loc - loc)
+    :preconditions (and (at ?loc) (ishomebase ?loc) (unpacked ?paper))
+    :goals ()
+    :action (pick-up ?paper ?loc)
   )
   (:rule move
     :parameters (?from - loc ?to - loc)

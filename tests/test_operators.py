@@ -108,7 +108,7 @@ def test_pg3_search_operators():
 )"""
 
     succ2 = list(op.get_successors(ldl2))
-    assert len(succ2) == 6
+    assert len(succ2) == 3
     ldl2_1 = min(succ2, key=str)
     assert str(ldl2_1) == """(define (policy)
   (:rule MyPickUp

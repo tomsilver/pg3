@@ -29,15 +29,18 @@ class _PG3SearchOperator(abc.ABC):
 
 
 class _AddRulePG3SearchOperator(_PG3SearchOperator):
-    """An operator that adds new rules to an existing LDL policy."""
+    """An operator that adds new rules to an existing LDL policy.
+
+    Only add new rules to the end of a policy. This does not change
+    completeness and helps with reducing the branching factor of policy
+    search.
+    """
 
     def get_successors(
             self, ldl: LiftedDecisionList) -> Iterator[LiftedDecisionList]:
-        for idx in range(len(ldl.rules) + 1):
-            for rule in self._get_candidate_rules():
-                new_rules = list(ldl.rules)
-                new_rules.insert(idx, rule)
-                yield LiftedDecisionList(new_rules)
+        for rule in self._get_candidate_rules():
+            new_rules = list(ldl.rules) + [rule]
+            yield LiftedDecisionList(new_rules)
 
     @functools.lru_cache(maxsize=None)
     def _get_candidate_rules(self) -> List[LDLRule]:
